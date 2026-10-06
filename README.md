@@ -43,7 +43,7 @@ Open http://127.0.0.1:8001
 
 ## Raspberry Pi
 
-A push to `main` updates the Pi at http://192.168.1.29:8000. The app runs there under systemd, from `/opt/luxlogger`, without Docker. `.env` and `data/` stay on the Pi and are not committed.
+A push to `main` updates the Pi at http://192.168.1.29. The app runs there under systemd, from `/opt/luxlogger`, without Docker. `.env` and `data/` stay on the Pi and are not committed.
 
 ## What is stored
 
