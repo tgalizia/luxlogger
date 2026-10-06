@@ -20,11 +20,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          export PATH="$HOME/.local/bin:$PATH"
-          export GIT_EXEC_PATH="$HOME/.local/git-prefix/usr/lib/git-core"
-          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-          export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
-          cd "$HOME/luxlogger"
+          cd /opt/luxlogger
           auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w 0)
           git -c http.extraheader="AUTHORIZATION: basic ${auth}" fetch origin main
           git reset --hard origin/main
@@ -32,18 +28,16 @@ jobs:
             python3 -m venv .venv
           fi
           .venv/bin/pip install -r requirements.txt
-          systemctl --user restart luxlogger
+          sudo systemctl restart luxlogger
 
       - name: Health check
         run: |
           set -euo pipefail
-          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-          export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
           for _ in 1 2 3 4 5 6 7 8 9 10; do
             if python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/status')"; then
               exit 0
             fi
             sleep 3
           done
-          systemctl --user status luxlogger --no-pager || true
+          systemctl status luxlogger --no-pager || true
           exit 1
