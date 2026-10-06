@@ -439,19 +439,29 @@ function renderFindings(findings) {
 function formatPrice(value, currency) {
   const text = new Intl.NumberFormat(DISPLAY_LOCALE, {
     minimumFractionDigits: 2,
-    maximumFractionDigits: 4,
-    useGrouping: false,
+    maximumFractionDigits: 2,
+    useGrouping: true,
   }).format(Number(value));
   return `${text} ${currency}`;
 }
 
-function energyAmount(item, currency, showCost) {
-  const kwh = formatNumber(item.kwh, 1, " kWh");
+function formatMeterKwh(value) {
+  if (missing(value)) return "—";
+  const text = new Intl.NumberFormat(DISPLAY_LOCALE, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+    useGrouping: true,
+  }).format(Number(value));
+  return `${text} kWh`;
+}
+
+function energyAmount(item, currency, showCost, meter) {
+  const kwh = meter ? formatMeterKwh(item.kwh) : formatNumber(item.kwh, 1, " kWh");
   if (!showCost || missing(item.cost)) return kwh;
   return `${kwh} · ${formatPrice(item.cost, currency)}`;
 }
 
-function renderEnergyBlock(container, block, currency, showCost, emptyText) {
+function renderEnergyBlock(container, block, currency, showCost, emptyText, meter) {
   container.replaceChildren();
   const channels = block && block.channels ? block.channels : [];
   const known = channels.some((channel) => !missing(channel.kwh));
@@ -463,18 +473,18 @@ function renderEnergyBlock(container, block, currency, showCost, emptyText) {
     return;
   }
   for (const channel of channels) {
-    container.append(energyRow(channel.label, channel, currency, showCost, false));
+    container.append(energyRow(channel.label, channel, currency, showCost, false, meter));
   }
-  container.append(energyRow("Total", block.total, currency, showCost, true));
+  container.append(energyRow("Total", block.total, currency, showCost, true, meter));
 }
 
-function energyRow(label, item, currency, showCost, total) {
+function energyRow(label, item, currency, showCost, total, meter) {
   const row = document.createElement("div");
   row.className = total ? "energy-row total" : "energy-row";
   const name = document.createElement("span");
   name.textContent = label;
   const value = document.createElement("strong");
-  value.textContent = energyAmount(item, currency, showCost);
+  value.textContent = energyAmount(item, currency, showCost, meter);
   row.append(name, value);
   return row;
 }
@@ -492,12 +502,12 @@ function renderEnergy(payload) {
     fields.energyNote.append(
       document.createTextNode("Heat delivered is shown below. Add a "),
       link,
-      document.createTextNode(" to see cost."),
+      document.createTextNode(" to see the cost of this range."),
     );
   } else {
     text(
       fields.energyNote,
-      `Using ${formatPrice(payload.price_per_kwh, currency)} per kWh. This range only includes samples stored by this app.`,
+      `Using ${formatPrice(payload.price_per_kwh, currency)} per kWh for this range. The heat meter shows the counter totals.`,
     );
   }
   renderEnergyBlock(
@@ -511,8 +521,9 @@ function renderEnergy(payload) {
     fields.energyMeter,
     payload && payload.meter,
     currency,
-    priced,
+    false,
     "The heat meter has not been read yet.",
+    true,
   );
 }
 

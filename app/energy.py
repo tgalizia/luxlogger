@@ -1,4 +1,6 @@
-"""Heat-meter deltas and the cost of that delivered heat."""
+"""Heat-meter deltas and the cost of heat delivered in a selected range."""
+
+import re
 
 CHANNELS = (
     ("heating", "Heating", "heat_heating_kwh"),
@@ -7,6 +9,7 @@ CHANNELS = (
 )
 
 MAX_PRICE_PER_KWH = 100
+_EUROPEAN_PRICE = re.compile(r"^\d{1,3},\d{2}$")
 
 
 class PriceError(Exception):
@@ -14,15 +17,10 @@ class PriceError(Exception):
 
 
 def validate_price(value) -> float:
-    """Return a price per kWh, or raise PriceError."""
-    if isinstance(value, bool) or value is None or (isinstance(value, str) and not str(value).strip()):
-        raise PriceError("Enter a price per kWh.")
-    try:
-        number = round(float(value), 4)
-    except (TypeError, ValueError):
-        raise PriceError("Enter a price per kWh.") from None
-    if number < 0:
-        raise PriceError("The price per kWh cannot be negative.")
+    """Return a price per kWh from a European number such as 0,30."""
+    if not isinstance(value, str) or not _EUROPEAN_PRICE.fullmatch(value.strip()):
+        raise PriceError("Enter the price as a European number, for example 0,30.")
+    number = round(float(value.strip().replace(",", ".")), 2)
     if number > MAX_PRICE_PER_KWH:
         raise PriceError("The price per kWh must be at most 100.")
     return number
@@ -62,13 +60,13 @@ def delivered_kwh(samples, attr: str) -> float | None:
 
 
 def energy_report(samples, latest, price: float | None, currency: str, since_iso: str | None) -> dict:
-    """Period heat and cost, plus the current meter readings."""
+    """Period heat and cost, plus the current meter readings without a price."""
     period = [
         _channel(channel_id, label, delivered_kwh(samples, attr), price)
         for channel_id, label, attr in CHANNELS
     ]
     meter = [
-        _channel(channel_id, label, _meter_kwh(latest, attr), price)
+        _channel(channel_id, label, _meter_kwh(latest, attr), None)
         for channel_id, label, attr in CHANNELS
     ]
     return {
@@ -76,7 +74,7 @@ def energy_report(samples, latest, price: float | None, currency: str, since_iso
         "price_per_kwh": price,
         "currency": currency,
         "period": {"channels": period, "total": _total(period, price)},
-        "meter": {"channels": meter, "total": _total(meter, price)},
+        "meter": {"channels": meter, "total": _total(meter, None)},
         "samples": len(samples),
     }
 

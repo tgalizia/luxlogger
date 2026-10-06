@@ -91,7 +91,7 @@ class PollingIn(BaseModel):
 
 
 class AppSettingsIn(BaseModel):
-    price_per_kwh: float | str | int | None = None
+    price_per_kwh: str
     currency: str | None = None
 
 

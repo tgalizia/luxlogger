@@ -39,21 +39,21 @@ def test_one_reading_has_no_period_figure():
     assert delivered_kwh([_sample(), _sample()], "heat_heating_kwh") is None
 
 
-def test_price_must_be_a_number_between_zero_and_100():
-    assert validate_price("0.3215") == 0.3215
-    assert validate_price(0.3215) == 0.3215
-    assert validate_price(0) == 0
-    assert validate_price(100) == 100
+def test_price_must_be_a_european_number_up_to_100():
+    assert validate_price("0,32") == 0.32
+    assert validate_price(" 12,50 ") == 12.5
+    assert validate_price("0,00") == 0
+    assert validate_price("100,00") == 100
     assert validate_currency(None) == "€"
     assert validate_currency("  ") == "€"
-    for value in (None, "", "abc", -0.1, 100.01, True):
+    for value in (None, "", "0.32", "0,3", "0,321", "100,01", "abc", 0.32, 0, 100, True):
         with pytest.raises(PriceError):
             validate_price(value)
     with pytest.raises(PriceError):
         validate_currency("euros")
 
 
-def test_energy_report_prices_the_window_and_the_meter():
+def test_energy_report_prices_only_the_range():
     samples = [
         _sample(heat_heating_kwh=100, heat_dhw_kwh=40, heat_pool_kwh=0),
         _sample(heat_heating_kwh=110, heat_dhw_kwh=42, heat_pool_kwh=0),
@@ -63,9 +63,9 @@ def test_energy_report_prices_the_window_and_the_meter():
     assert heating["kwh"] == 10
     assert heating["cost"] == 3
     assert report["period"]["total"] == {"kwh": 12, "cost": 3.6}
-    assert report["meter"]["channels"][0] == {"id": "heating", "label": "Heating", "kwh": 110, "cost": 33}
+    assert report["meter"]["channels"][0] == {"id": "heating", "label": "Heating", "kwh": 110, "cost": None}
     assert report["meter"]["total"]["kwh"] == 152
-    assert report["meter"]["total"]["cost"] == 45.6
+    assert report["meter"]["total"]["cost"] is None
     assert report["price_per_kwh"] == 0.3
 
 
