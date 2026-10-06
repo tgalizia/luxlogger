@@ -483,7 +483,7 @@ function energyRow(label, item, currency, showCost, total, meter) {
   row.className = total ? "energy-row total" : "energy-row";
   const name = document.createElement("span");
   name.textContent = label;
-  const value = document.createElement("strong");
+  const value = document.createElement("span");
   value.textContent = energyAmount(item, currency, showCost, meter);
   row.append(name, value);
   return row;
