@@ -25,7 +25,8 @@ jobs:
           export XDG_RUNTIME_DIR="/run/user/$(id -u)"
           export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
           cd "$HOME/luxlogger"
-          git -c http.extraheader="AUTHORIZATION: bearer ${GH_TOKEN}" fetch origin main
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w 0)
+          git -c http.extraheader="AUTHORIZATION: basic ${auth}" fetch origin main
           git reset --hard origin/main
           if [ ! -x .venv/bin/pip ]; then
             python3 -m venv .venv
