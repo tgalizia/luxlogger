@@ -1,0 +1,1 @@
+"""Local Luxtronik advisor."""

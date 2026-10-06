@@ -1,0 +1,42 @@
+name: Deploy to Raspberry Pi
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: pi-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, luxlogger]
+    steps:
+      - name: Update and restart
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd /opt/luxlogger
+          git -c http.extraheader="AUTHORIZATION: bearer ${GH_TOKEN}" fetch origin main
+          git reset --hard origin/main
+          if [ ! -x .venv/bin/pip ]; then
+            python3 -m venv .venv
+          fi
+          .venv/bin/pip install -r requirements.txt
+          sudo systemctl restart luxlogger
+
+      - name: Health check
+        run: |
+          set -euo pipefail
+          for _ in 1 2 3 4 5 6 7 8 9 10; do
+            if python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/status')"; then
+              exit 0
+            fi
+            sleep 3
+          done
+          systemctl status luxlogger --no-pager || true
+          exit 1

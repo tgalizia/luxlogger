@@ -1,0 +1,57 @@
+.page-actions { display: flex; gap: 12px; align-items: center; margin: 18px 0; flex-wrap: wrap; }
+button {
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font: inherit;
+  font-weight: 600;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+}
+button.secondary { background: #e7e5e4; color: var(--ink); }
+button:disabled { opacity: 0.55; cursor: default; }
+#status { min-height: 1.2em; }
+article.card {
+  border-radius: 16px;
+  padding: 16px 18px;
+  margin-bottom: 12px;
+}
+.row { display: flex; justify-content: space-between; gap: 16px; align-items: center; }
+h2 { margin: 0 0 8px; }
+.label { color: var(--muted); font-size: 0.85rem; }
+.value { font-size: 1.15rem; margin-top: 2px; }
+.reason { margin-top: 8px; }
+#modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+#modes article { margin-bottom: 0; }
+.control { display: flex; align-items: center; gap: 10px; }
+.control select { flex: 1; min-width: 0; }
+.control button { flex: none; }
+select {
+  font: inherit;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: white;
+  color: var(--ink);
+}
+dialog {
+  border: 0;
+  border-radius: 16px;
+  padding: 22px;
+  max-width: 420px;
+  box-shadow: 0 16px 40px rgba(28, 25, 23, 0.18);
+}
+dialog::backdrop { background: rgba(28, 25, 23, 0.35); }
+dialog h2 { margin-bottom: 8px; }
+dialog p { color: var(--ink); margin-bottom: 16px; }
+.actions { display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 700px) {
+  .row { display: block; }
+  #rows article button { margin-top: 12px; }
+}

@@ -1,0 +1,61 @@
+{% macro header_copy(title, lede=None) %}
+<div class="header-copy">
+  <h1>{{ title }}</h1>
+  {% if lede %}<p>{{ lede }}</p>{% endif %}
+  {% if caller is defined %}{{ caller() }}{% endif %}
+</div>
+{% endmacro %}
+
+{% macro toolbar_link(href, page, label, active) %}
+<a href="{{ href }}" class="toolbar-item{% if active == page %} is-current{% endif %}"{% if active == page %} aria-current="page"{% endif %}>
+  {{ caller() }}
+  <span>{{ label }}</span>
+</a>
+{% endmacro %}
+
+{% macro toolbar(refresh_seconds, active="") %}
+<header class="toolbar">
+  <div class="toolbar-inner">
+    <nav class="toolbar-nav" aria-label="Pages">
+      {% call toolbar_link("/", "dashboard", "Dashboard", active) %}
+      <i class="fa-solid fa-house" aria-hidden="true"></i>
+      {% endcall %}
+      {% call toolbar_link("/settings", "settings", "Pump settings", active) %}
+      <i class="fa-solid fa-fan" aria-hidden="true"></i>
+      {% endcall %}
+      {% call toolbar_link("/app-settings", "app", "App settings", active) %}
+      <i class="fa-solid fa-gear" aria-hidden="true"></i>
+      {% endcall %}
+    </nav>
+    <div class="toolbar-status">
+      {{ query_switch() }}
+      <div id="refresh-gauge" class="refresh-gauge" data-refresh-seconds="{{ refresh_seconds }}" title="Seconds until the next controller read" aria-label="Next read in {{ refresh_seconds }} seconds">
+        <svg viewBox="0 0 36 36" aria-hidden="true">
+          <circle class="track" cx="18" cy="18" r="14" pathLength="100"></circle>
+          <circle id="refresh-ring" class="progress" cx="18" cy="18" r="14" pathLength="100"></circle>
+        </svg>
+        <span id="refresh-seconds">{{ refresh_seconds }}</span>
+      </div>
+      {{ pill("connection", "Connecting") }}
+    </div>
+  </div>
+</header>
+{% endmacro %}
+
+{% macro query_switch() %}
+<label class="query-switch">
+  <input id="controller-query" type="checkbox" checked />
+  <span class="switch" aria-hidden="true"></span>
+  Read controller
+</label>
+{% endmacro %}
+
+{% macro pill(id, text) %}
+<div id="{{ id }}" class="pill">{{ text }}</div>
+{% endmacro %}
+
+{% macro card(tag="article", class="", id="") %}
+<{{ tag }} class="card{% if class %} {{ class }}{% endif %}"{% if id %} id="{{ id }}"{% endif %}>
+{{ caller() }}
+</{{ tag }}>
+{% endmacro %}

@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block title %}Luxtronik advisor{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<link rel="stylesheet" href="/static/dashboard.css?v=2" />
+{% endblock %}
+
+{% block body %}
+<header>
+  {% call ui.header_copy("Luxtronik advisor") %}
+  <p id="connection-detail">Waiting for the first read.</p>
+  {% endcall %}
+</header>
+<div class="metrics">
+  {% call ui.card() %}
+  <div class="label" id="circuit-label">Heating</div>
+  <div class="quad">
+    <div>
+      <div class="sublabel">Flow</div>
+      <div class="value" id="flow">—</div>
+    </div>
+    <div>
+      <div class="sublabel">Return</div>
+      <div class="value" id="return-temp">—</div>
+    </div>
+    <div>
+      <div class="sublabel">Actual</div>
+      <div class="value" id="actual-temp">—</div>
+    </div>
+    <div>
+      <div class="sublabel">Target</div>
+      <div class="value" id="target-temp">—</div>
+    </div>
+  </div>
+  {% endcall %}
+  {% call ui.card() %}
+  <div class="label">Outdoor</div>
+  <div class="value" id="outdoor">—</div>
+  {% endcall %}
+  {% call ui.card() %}
+  <div class="device-row">
+    <div class="label">Compressor</div>
+    <div class="state" id="compressor">—</div>
+  </div>
+  <div class="device-row">
+    <div class="label">Extra heater</div>
+    <div class="state" id="heater">—</div>
+  </div>
+  {% endcall %}
+</div>
+{% call ui.card("article", "mode-card") %}
+<div class="label">Mode</div>
+<div id="mode-badges" class="badges" role="list" aria-label="Waiting for a sample">
+  <span class="badge" data-tone="idle" role="listitem"><span class="dot" aria-hidden="true"></span>Idle</span>
+  <span class="badge" data-tone="pump" role="listitem"><span class="dot" aria-hidden="true"></span>Pump pre-run</span>
+  <span class="badge" data-tone="starting" role="listitem"><span class="dot" aria-hidden="true"></span>Starting</span>
+  <span class="badge" data-tone="heat" role="listitem"><span class="dot" aria-hidden="true"></span>Heating</span>
+  <span class="badge" data-tone="water" role="listitem"><span class="dot" aria-hidden="true"></span>Hot water</span>
+  <span class="badge" data-tone="defrost" role="listitem"><span class="dot" aria-hidden="true"></span>Defrost</span>
+  <span class="badge" data-tone="cool" role="listitem"><span class="dot" aria-hidden="true"></span>Cooling</span>
+  <span class="badge" data-tone="backup" role="listitem"><span class="dot" aria-hidden="true"></span>Backup</span>
+  <span class="badge" data-tone="fault" role="listitem"><span class="dot" aria-hidden="true"></span>Fault</span>
+</div>
+{% endcall %}
+{% call ui.card("section") %}
+<div class="chart-head">
+  <h2>Heating</h2>
+  <div class="ranges" role="group" aria-label="Chart time range">
+    <button type="button" data-range="hour" aria-pressed="false">Last hour</button>
+    <button type="button" data-range="day" class="active" aria-pressed="true">Last 24 hours</button>
+    <button type="button" data-range="month" aria-pressed="false">This month</button>
+    <button type="button" data-range="year" aria-pressed="false">This year</button>
+  </div>
+</div>
+<p id="chart-message"></p>
+<div id="chart-wrap"><canvas id="chart"></canvas></div>
+<h2 class="subhead">Hot water</h2>
+<div id="dhw-wrap"><canvas id="dhw-chart"></canvas></div>
+<h2 class="subhead">Compressor and extra heater</h2>
+<div id="devices-wrap"><canvas id="devices-chart"></canvas></div>
+{% endcall %}
+{% call ui.card("section", id="energy") %}
+<h2>Heat delivered</h2>
+<p id="energy-note">Loading heat-meter readings.</p>
+<div class="energy-grid">
+  <div>
+    <h3>This range</h3>
+    <div id="energy-period"></div>
+  </div>
+  <div>
+    <h3>Heat meter</h3>
+    <div id="energy-meter"></div>
+  </div>
+</div>
+{% endcall %}
+<div class="split">
+  {% call ui.card("section") %}
+  <h2>Room temperature</h2>
+  <form id="indoor-form">
+    <label>
+      Room
+      <input id="room" name="room" value="living room" maxlength="80" required />
+    </label>
+    <label>
+      Temperature °C
+      <input name="temperature_c" type="number" min="-10" max="45" step="0.1" required />
+    </label>
+    <button type="submit">Save reading</button>
+  </form>
+  <p id="form-message"></p>
+  {% endcall %}
+  {% call ui.card("section") %}
+  <h2>Optimization</h2>
+  <div id="findings"></div>
+  <p id="advice-body">Ask for a suggestion after a few samples have been stored.</p>
+  <button id="advice-button" type="button">Ask advisor</button>
+  {% endcall %}
+</div>
+<footer>
+  <p>This page only reads the heat pump. Confirmed changes are made on the settings page.</p>
+</footer>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/app.js?v=23"></script>
+{% endblock %}
