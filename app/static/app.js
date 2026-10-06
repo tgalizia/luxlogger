@@ -143,10 +143,9 @@ function renderStatus(payload) {
       : "No successful read yet.";
     text(fields.connectionDetail, `Queries paused. ${when}`);
   } else {
-    const target = `${payload.host}:${payload.port}`;
     const detail = payload.last_error
-      ? `${target} — ${payload.last_error}`
-      : `${target} — last read ${formatWhen(payload.last_success_at)}`;
+      ? payload.last_error
+      : `Last read ${formatWhen(payload.last_success_at)}`;
     text(fields.connectionDetail, detail);
   }
   renderModeBadges(latest);
