@@ -6,11 +6,12 @@
 {% block head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-<link rel="stylesheet" href="/static/dashboard.css?v=2" />
+<link rel="stylesheet" href="/static/dashboard.css?v=4" />
 {% endblock %}
 
 {% block body %}
-<header>
+<header class="page-title">
+  <img class="brand-mark" src="/static/favicon.svg" alt="" width="56" height="56" />
   {% call ui.header_copy("Luxlogger") %}
   <p id="connection-detail">Waiting for the first read.</p>
   {% endcall %}
@@ -72,6 +73,7 @@
   <div class="ranges" role="group" aria-label="Chart time range">
     <button type="button" data-range="hour" aria-pressed="false">Last hour</button>
     <button type="button" data-range="day" class="active" aria-pressed="true">Last 24 hours</button>
+    <button type="button" data-range="week" aria-pressed="false">This week</button>
     <button type="button" data-range="month" aria-pressed="false">This month</button>
     <button type="button" data-range="year" aria-pressed="false">This year</button>
   </div>
@@ -126,5 +128,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/app.js?v=24"></script>
+<script src="/static/app.js?v=25"></script>
 {% endblock %}

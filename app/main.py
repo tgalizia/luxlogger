@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -115,6 +115,11 @@ def _page(request: Request, template: str, active: str):
             "refresh_seconds": get_settings().poll_interval_seconds,
         },
     )
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return FileResponse(PROJECT_ROOT / "app" / "static" / "favicon.ico")
 
 
 @app.get("/", response_class=HTMLResponse)

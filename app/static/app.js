@@ -5,6 +5,7 @@ const adviceUrl = "/api/advice";
 const RANGES = {
   hour: { unit: "minute", empty: "No samples in the last hour yet." },
   day: { unit: "hour", empty: "No samples in the last 24 hours yet." },
+  week: { unit: "day", empty: "No samples this week yet." },
   month: { unit: "day", empty: "No samples this month yet." },
   year: { unit: "month", empty: "No samples this year yet." },
 };
@@ -255,7 +256,11 @@ function chartWindow(range) {
   const end = new Date();
   const start = new Date(end);
   if (range === "hour") start.setTime(end.getTime() - 60 * 60 * 1000);
-  else if (range === "month") {
+  else if (range === "week") {
+    const daysSinceMonday = (start.getDay() + 6) % 7;
+    start.setDate(start.getDate() - daysSinceMonday);
+    start.setHours(0, 0, 0, 0);
+  } else if (range === "month") {
     start.setDate(1);
     start.setHours(0, 0, 0, 0);
   } else if (range === "year") {

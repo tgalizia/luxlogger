@@ -1,3 +1,14 @@
+.page-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.brand-mark {
+  width: 56px;
+  height: 56px;
+  flex: none;
+}
+.page-title .header-copy { min-width: 0; }
 .metrics {
   display: grid;
   grid-template-columns: minmax(0, 2.4fr) minmax(120px, 0.7fr) minmax(190px, 1fr);
