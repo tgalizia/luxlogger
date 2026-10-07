@@ -147,12 +147,12 @@ sudo apt install -y python3 python3-venv python3-pip git nginx
 
 ### 3. Install the app
 
-Clone this repository into `/opt/luxlogger` (replace the URL with your own remote):
+Clone this repository into `/opt/luxlogger`:
 
 ```bash
 sudo mkdir -p /opt/luxlogger
 sudo chown "$USER:$USER" /opt/luxlogger
-git clone <repository-url> /opt/luxlogger
+git clone https://github.com/tgalizia/luxlogger.git /opt/luxlogger
 cd /opt/luxlogger
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
