@@ -14,8 +14,18 @@ DEFAULT_MODELS = {
     "anthropic": "claude-sonnet-4-5",
 }
 
+MODEL_CHOICES = {
+    "openai": ("gpt-4o-mini", "gpt-4o", "gpt-4.1-mini"),
+    "gemini": ("gemini-3.8-flash", "gemini-2.5-flash"),
+    "anthropic": ("claude-sonnet-4-5", "claude-haiku-4-5"),
+}
+
+NOTE_LIMIT = 2000
+PROMPT_LIMIT = 8000
+
 SYSTEM_PROMPT = """You advise the owner of an Alpha Innotec heat pump controlled by Luxtronik 2.
 You receive diagnostics computed from local measurements. Use only those figures.
+The user message may name the heat pump and controller, and may include an owner note about a goal or a problem. Address that note. The only configuration to mention is heating mode, hot water mode, hot water temperature, and the heating setpoint.
 Explain short cycling, compressor runtime, backup-heater use, and flow/return temperatures when the figures speak to them.
 Suggest practical steps the owner can take, such as a schedule or setback change, or when to ask a technician to check flow.
 Do not tell the user to write controller parameters, registers, or service-menu values. This service cannot change the heat pump.
@@ -24,7 +34,8 @@ Write plain sentences. No preamble. At most 220 words."""
 SETTINGS_PROMPT = """You suggest optional changes to four household heat-pump settings.
 Return only JSON: {"changes":[{"id":"...","value":...,"reason":"..."}]}
 The changes list may be empty.
-Leave a setting out unless the diagnostics show a concrete reason to change it.
+The user message may name the heat pump and controller, and may include an owner note about a goal or a problem. Address that note.
+Leave a setting out unless the diagnostics or the owner note show a concrete reason to change it.
 Do not invent a change. Prefer no change.
 Never suggest Second heatsource.
 Allowed settings:
@@ -39,26 +50,94 @@ class AdvisorError(Exception):
     """The suggestion could not be produced."""
 
 
-def advise(findings: dict, settings: Settings | None = None) -> tuple[str, str, str]:
+def validate_provider(provider: str | None) -> str:
+    chosen = (provider or "").strip().lower()
+    if chosen not in DEFAULT_MODELS:
+        raise AdvisorError("AI_PROVIDER must be openai, gemini, or anthropic.")
+    return chosen
+
+
+def validate_model(provider: str, model: str | None) -> str:
+    """Return a model id that belongs to the provider."""
+    chosen_provider = validate_provider(provider)
+    chosen = (model or "").strip()
+    if chosen not in MODEL_CHOICES[chosen_provider]:
+        raise AdvisorError("Choose a model for the selected provider.")
+    return chosen
+
+
+def validate_prompt(value: str | None, label: str) -> str:
+    text = (value or "").strip()
+    if not text:
+        raise AdvisorError(f"The {label} cannot be empty.")
+    if len(text) > PROMPT_LIMIT:
+        raise AdvisorError(f"The {label} must be at most {PROMPT_LIMIT} characters.")
+    return text
+
+
+def clean_note(value: str | None) -> str:
+    text = (value or "").strip()
+    if len(text) > NOTE_LIMIT:
+        raise AdvisorError("Keep the note to 2000 characters.")
+    return text
+
+
+def context_block(identity: dict | None, note: str | None) -> str:
+    """Equipment lines and the owner note. Blank values are left out."""
+    identity = identity or {}
+    equipment = []
+    for label, key in (
+        ("Pump maker", "pump_maker"),
+        ("Pump model", "pump_model"),
+        ("Controller", "controller_model"),
+        ("Controller software", "controller_software"),
+    ):
+        value = str(identity.get(key) or "").strip()
+        if value:
+            equipment.append(f"{label}: {value}")
+    parts = []
+    if equipment:
+        parts.append("Equipment:\n" + "\n".join(equipment))
+    text = (note or "").strip()
+    if text:
+        parts.append("Owner note:\n" + text)
+    return "\n\n".join(parts)
+
+
+def with_context(body: str, identity: dict | None = None, note: str | None = None) -> str:
+    extra = context_block(identity, note)
+    if not extra:
+        return body
+    return f"{body}\n\n{extra}"
+
+
+def advise(
+    findings: dict,
+    settings: Settings | None = None,
+    *,
+    identity: dict | None = None,
+    note: str | None = None,
+    system_prompt: str | None = None,
+    provider: str | None = None,
+    model: str | None = None,
+) -> tuple[str, str, str]:
     """Return provider, model, and suggestion text for the findings JSON."""
     settings = settings or get_settings()
-    provider = settings.ai_provider.strip().lower()
-    if provider not in DEFAULT_MODELS:
-        raise AdvisorError("AI_PROVIDER must be openai, gemini, or anthropic.")
-    model = settings.ai_model.strip() or DEFAULT_MODELS[provider]
-    api_key = _api_key(settings, provider)
+    chosen_provider, chosen_model = _selection(settings, provider, model)
+    api_key = _api_key(settings, chosen_provider)
     if not api_key:
-        raise AdvisorError(f"Set {_key_name(provider)} in .env before asking for advice.")
-    user_prompt = (
-        "Diagnostics JSON:\n"
-        + json.dumps(findings, indent=2)
-        + "\n\nA short cycle is a completed compressor run shorter than "
-        + f"{findings.get('short_cycle_threshold_s', 600)} seconds."
+        raise AdvisorError(f"Set {_key_name(chosen_provider)} in .env before asking for advice.")
+    user_prompt = with_context(_diagnostics_prompt(findings), identity, clean_note(note))
+    suggestion = _complete(
+        chosen_provider,
+        chosen_model,
+        api_key,
+        user_prompt,
+        system_prompt or SYSTEM_PROMPT,
     )
-    suggestion = _complete(provider, model, api_key, user_prompt)
     if not suggestion:
         raise AdvisorError("The model returned an empty suggestion.")
-    return provider, model, suggestion
+    return chosen_provider, chosen_model, suggestion
 
 
 def suggest_settings(
@@ -66,27 +145,57 @@ def suggest_settings(
     findings: dict,
     settings: Settings | None = None,
     complete=None,
+    *,
+    identity: dict | None = None,
+    note: str | None = None,
+    system_prompt: str | None = None,
+    provider: str | None = None,
+    model: str | None = None,
 ) -> list[dict]:
     """Ask the model for optional setting changes. Does not write to the controller."""
     settings = settings or get_settings()
-    user_prompt = (
+    user_prompt = with_context(_settings_prompt(current, findings), identity, clean_note(note))
+    if complete is None:
+        chosen_provider, chosen_model = _selection(settings, provider, model)
+        api_key = _api_key(settings, chosen_provider)
+        if not api_key:
+            raise AdvisorError(f"Set {_key_name(chosen_provider)} in .env before asking for a suggestion.")
+        text = _complete(
+            chosen_provider,
+            chosen_model,
+            api_key,
+            user_prompt,
+            system_prompt or SETTINGS_PROMPT,
+        )
+    else:
+        text = complete(user_prompt)
+    return filter_changes(_parse_changes(text), {item["id"]: item["value"] for item in current})
+
+
+def _selection(settings: Settings, provider: str | None, model: str | None) -> tuple[str, str]:
+    chosen_provider = validate_provider(provider or settings.ai_provider)
+    chosen = (model if model is not None else settings.ai_model).strip()
+    if chosen in MODEL_CHOICES[chosen_provider]:
+        return chosen_provider, chosen
+    return chosen_provider, DEFAULT_MODELS[chosen_provider]
+
+
+def _diagnostics_prompt(findings: dict) -> str:
+    return (
+        "Diagnostics JSON:\n"
+        + json.dumps(findings, indent=2)
+        + "\n\nA short cycle is a completed compressor run shorter than "
+        + f"{findings.get('short_cycle_threshold_s', 600)} seconds."
+    )
+
+
+def _settings_prompt(current: list[dict], findings: dict) -> str:
+    return (
         "Current settings JSON:\n"
         + json.dumps(current, indent=2)
         + "\n\nDiagnostics JSON:\n"
         + json.dumps(findings, indent=2)
     )
-    if complete is None:
-        provider = settings.ai_provider.strip().lower()
-        if provider not in DEFAULT_MODELS:
-            raise AdvisorError("AI_PROVIDER must be openai, gemini, or anthropic.")
-        model = settings.ai_model.strip() or DEFAULT_MODELS[provider]
-        api_key = _api_key(settings, provider)
-        if not api_key:
-            raise AdvisorError(f"Set {_key_name(provider)} in .env before asking for a suggestion.")
-        text = _complete(provider, model, api_key, user_prompt, SETTINGS_PROMPT)
-    else:
-        text = complete(user_prompt)
-    return filter_changes(_parse_changes(text), {item["id"]: item["value"] for item in current})
 
 
 def _parse_changes(text: str) -> list:

@@ -136,6 +136,8 @@ button:disabled { opacity: 0.6; cursor: wait; }
 }
 #findings div { display: flex; justify-content: space-between; gap: 8px; font-size: 0.92rem; }
 #advice-body { white-space: pre-wrap; line-height: 1.45; }
+#advice-body + label { margin-top: 12px; }
+#advice-button { margin-top: 12px; }
 #energy { margin-top: 16px; }
 #energy h2 { margin-bottom: 6px; }
 #energy h3 { font-size: 0.92rem; margin: 0 0 8px; }

@@ -124,12 +124,15 @@ def poll_once() -> None:
     settings = get_settings()
     if settings.demo_mode:
         _seed_demo_once(settings.poll_interval_seconds)
+    from app.runtime import controller_endpoint
+
+    host, port = controller_endpoint()
     recorded_at = utcnow()
     try:
         if settings.demo_mode:
             snapshot = demo_snapshot(recorded_at)
         else:
-            snapshot = read_live_snapshot(settings.luxtronik_host, settings.luxtronik_port, recorded_at)
+            snapshot = read_live_snapshot(host, port, recorded_at)
     except (OSError, ConnectionError, TimeoutError, struct.error) as exc:
         poll_state.mark_error(str(exc) or exc.__class__.__name__)
         logger.warning("Luxtronik read failed: %s", exc)
@@ -147,6 +150,23 @@ def poll_once() -> None:
         snapshot.compressor_running,
         snapshot.flow_temp,
     )
+
+
+def read_controller_identity(host: str, port: int) -> dict:
+    """Read the pump series code and controller software. Does not write."""
+    from luxtronik import Luxtronik
+
+    previous_timeout = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(SOCKET_TIMEOUT_SECONDS)
+    try:
+        pump = Luxtronik(host, port)
+        calculations = pump.calculations
+    finally:
+        socket.setdefaulttimeout(previous_timeout)
+    return {
+        "pump_model": _text(calculations, "ID_WEB_Code_WP_akt"),
+        "controller_software": _text(calculations, "ID_WEB_SoftStand"),
+    }
 
 
 def read_live_snapshot(host: str, port: int, recorded_at: datetime) -> Snapshot:

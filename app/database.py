@@ -91,6 +91,16 @@ class AppPreference(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     price_per_kwh: Mapped[float | None] = mapped_column(Float)
     currency: Mapped[str] = mapped_column(String(8), nullable=False, default="€")
+    luxtronik_host: Mapped[str | None] = mapped_column(String(255))
+    luxtronik_port: Mapped[int | None] = mapped_column(Integer)
+    pump_maker: Mapped[str | None] = mapped_column(String(120))
+    pump_model: Mapped[str | None] = mapped_column(String(120))
+    controller_model: Mapped[str | None] = mapped_column(String(120))
+    controller_software: Mapped[str | None] = mapped_column(String(120))
+    ai_provider: Mapped[str | None] = mapped_column(String(32))
+    ai_model: Mapped[str | None] = mapped_column(String(128))
+    advice_prompt: Mapped[str | None] = mapped_column(Text)
+    settings_prompt: Mapped[str | None] = mapped_column(Text)
 
 
 def _connect_args(url: str) -> dict:
@@ -121,15 +131,33 @@ _TELEMETRY_COLUMNS = {
     "dhw_setpoint": "FLOAT",
 }
 
+_PREFERENCE_COLUMNS = {
+    "luxtronik_host": "VARCHAR(255)",
+    "luxtronik_port": "INTEGER",
+    "pump_maker": "VARCHAR(120)",
+    "pump_model": "VARCHAR(120)",
+    "controller_model": "VARCHAR(120)",
+    "controller_software": "VARCHAR(120)",
+    "ai_provider": "VARCHAR(32)",
+    "ai_model": "VARCHAR(128)",
+    "advice_prompt": "TEXT",
+    "settings_prompt": "TEXT",
+}
+
+
+def _missing_columns(table: str, columns: dict[str, str]) -> list[str]:
+    existing = {column["name"] for column in inspect(engine).get_columns(table)}
+    return [
+        f"ALTER TABLE {table} ADD COLUMN {name} {kind}"
+        for name, kind in columns.items()
+        if name not in existing
+    ]
+
 
 def init_db() -> None:
     Base.metadata.create_all(engine)
-    columns = {column["name"] for column in inspect(engine).get_columns(TelemetrySample.__tablename__)}
-    missing = [
-        f"ALTER TABLE telemetry_samples ADD COLUMN {name} {kind}"
-        for name, kind in _TELEMETRY_COLUMNS.items()
-        if name not in columns
-    ]
+    missing = _missing_columns(TelemetrySample.__tablename__, _TELEMETRY_COLUMNS)
+    missing.extend(_missing_columns(AppPreference.__tablename__, _PREFERENCE_COLUMNS))
     if missing:
         with engine.begin() as connection:
             for statement in missing:
@@ -339,12 +367,16 @@ def preference_to_dict(row: AppPreference | None) -> dict:
     return {"price_per_kwh": round(float(row.price_per_kwh), 4), "currency": row.currency or "€"}
 
 
-def save_app_preference(session, price_per_kwh: float, currency: str) -> AppPreference:
+def apply_app_preference(session, **fields) -> AppPreference:
+    """Update only the given columns. A missing row starts with the euro symbol."""
     row = get_app_preference(session)
     if row is None:
-        row = AppPreference(price_per_kwh=price_per_kwh, currency=currency)
+        row = AppPreference(currency=fields.get("currency") or "€")
         session.add(row)
-    else:
-        row.price_per_kwh = price_per_kwh
-        row.currency = currency
+    for key, value in fields.items():
+        setattr(row, key, value)
     return row
+
+
+def save_app_preference(session, price_per_kwh: float, currency: str) -> AppPreference:
+    return apply_app_preference(session, price_per_kwh=price_per_kwh, currency=currency)

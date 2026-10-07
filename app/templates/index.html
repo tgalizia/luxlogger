@@ -6,7 +6,7 @@
 {% block head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-<link rel="stylesheet" href="/static/dashboard.css?v=5" />
+<link rel="stylesheet" href="/static/dashboard.css?v=6" />
 {% endblock %}
 
 {% block body %}
@@ -119,6 +119,10 @@
   <h2>Optimization</h2>
   <div id="findings"></div>
   <p id="advice-body">Ask for a suggestion after a few samples have been stored.</p>
+  <label>
+    What should the advisor solve?
+    <textarea id="advice-note" maxlength="2000" rows="3" placeholder="A goal or a problem, for example a cold morning or too many compressor starts."></textarea>
+  </label>
   <button id="advice-button" type="button">Ask advisor</button>
   {% endcall %}
 </div>
@@ -128,5 +132,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/app.js?v=27"></script>
+<script src="/static/app.js?v=28"></script>
 {% endblock %}

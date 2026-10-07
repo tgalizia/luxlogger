@@ -617,7 +617,11 @@ adviceButton.addEventListener("click", async () => {
   adviceButton.disabled = true;
   text(fields.adviceBody, "Reading the last day of samples…");
   try {
-    const response = await fetch(adviceUrl, { method: "POST" });
+    const response = await fetch(adviceUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note: document.querySelector("#advice-note").value }),
+    });
     if (!response.ok) {
       const error = await readError(response);
       renderAdvice(error.findings ? { findings: error.findings, suggestion: "" } : null, error.message);

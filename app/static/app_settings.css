@@ -1,11 +1,34 @@
+.settings-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.settings-column { display: grid; gap: 16px; align-content: start; }
 form.card {
   border-radius: 16px;
   padding: 16px 18px;
-  margin-top: 18px;
+  margin-top: 0;
   display: grid;
   gap: 12px;
 }
+@media (max-width: 800px) {
+  .settings-columns { grid-template-columns: 1fr; }
+}
+form.card h2 { margin: 0; }
 label { display: grid; gap: 4px; font-size: 0.92rem; }
+textarea,
+select {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--ink);
+}
+textarea { width: 100%; resize: vertical; }
+textarea.prompt { min-height: 9rem; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
 button {
   justify-self: start;
   font: inherit;
@@ -17,6 +40,15 @@ button {
   padding: 8px 14px;
   cursor: pointer;
 }
+button.secondary { background: #e7e5e4; color: var(--ink); }
 button:disabled { opacity: 0.55; cursor: default; }
-#status { min-height: 1.2em; }
-.hint { margin-top: 12px; }
+.form-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-weight: 600;
+}
+.form-status[hidden] { display: none; }
+form.card .form-status.ok { color: #15803d; }
+form.card .form-status.error { color: #b91c1c; }

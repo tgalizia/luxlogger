@@ -186,7 +186,11 @@ suggestButton.addEventListener("click", async () => {
   suggestButton.disabled = true;
   statusEl.textContent = "Looking at the last 24 hours…";
   try {
-    const response = await fetch("/api/settings/suggest", { method: "POST" });
+    const response = await fetch("/api/settings/suggest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note: document.querySelector("#owner-note").value }),
+    });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
       statusEl.textContent = detailMessage(body);

@@ -2,8 +2,9 @@
 
 import pytest
 
-from app.ai_advisor import suggest_settings
+from app.ai_advisor import AdvisorError, context_block, suggest_settings, validate_model, validate_provider
 from app.luxtronik_client import SettingsWriteError, commit_setting
+from app.runtime import PreferenceError, validate_port
 from app.settings_catalog import SettingsError, filter_changes, validate_value
 
 
@@ -42,6 +43,75 @@ def test_empty_suggestion_leaves_every_setting_untouched():
     assert accepted == []
     assert current == before
     assert filter_changes([], CURRENT) == []
+
+
+def test_context_includes_known_equipment_and_note():
+    block = context_block(
+        {
+            "pump_maker": "Alpha Innotec",
+            "pump_model": "LWC",
+            "controller_model": "",
+            "controller_software": "V1.88",
+        },
+        "The house is cold in the morning.",
+    )
+    assert "Pump maker: Alpha Innotec" in block
+    assert "Pump model: LWC" in block
+    assert "Controller software: V1.88" in block
+    assert "Controller:" not in block
+    assert "Owner note:\nThe house is cold in the morning." in block
+
+
+def test_blank_equipment_and_empty_note_are_omitted():
+    assert context_block({"pump_maker": "  ", "controller_model": ""}, "  ") == ""
+    assert context_block({"pump_model": "LD7"}, None) == "Equipment:\nPump model: LD7"
+
+
+def test_note_reaches_the_settings_prompt():
+    seen = {}
+
+    def complete(prompt):
+        seen["prompt"] = prompt
+        return '{"changes": []}'
+
+    current = [
+        {"id": "ID_Ba_Hz_akt", "value": "Automatic"},
+        {"id": "ID_Ba_Bw_akt", "value": "Automatic"},
+        {"id": "ID_Einst_BWS_akt", "value": 46.0},
+        {"id": "ID_Einst_WK_akt", "value": 20.0},
+    ]
+    accepted = suggest_settings(
+        current,
+        {"window_hours": 24},
+        complete=complete,
+        identity={"pump_maker": "Novelan"},
+        note="Too many starts",
+    )
+    assert accepted == []
+    assert "Pump maker: Novelan" in seen["prompt"]
+    assert "Owner note:\nToo many starts" in seen["prompt"]
+    assert "Controller:" not in seen["prompt"]
+
+
+def test_unknown_provider_and_model_are_rejected():
+    with pytest.raises(AdvisorError):
+        validate_provider("local")
+    with pytest.raises(AdvisorError):
+        validate_model("openai", "not-a-model")
+    with pytest.raises(AdvisorError):
+        validate_model("openai", "gemini-3.8-flash")
+    assert validate_model("openai", "gpt-4o-mini") == "gpt-4o-mini"
+    assert validate_provider(" Gemini ") == "gemini"
+
+
+def test_port_must_be_in_range():
+    assert validate_port("8889") == 8889
+    with pytest.raises(PreferenceError):
+        validate_port(0)
+    with pytest.raises(PreferenceError):
+        validate_port(70000)
+    with pytest.raises(PreferenceError):
+        validate_port("pump")
 
 
 def test_invalid_suggestions_are_dropped():

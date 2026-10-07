@@ -176,7 +176,9 @@ a { color: var(--accent); font-weight: 600; }
   border-radius: 14px;
   padding: 14px 16px;
 }
-input {
+input,
+textarea,
+select {
   font: inherit;
   padding: 8px 10px;
   border: 1px solid var(--line);
@@ -184,3 +186,4 @@ input {
   background: white;
   color: var(--ink);
 }
+textarea { width: 100%; resize: vertical; }

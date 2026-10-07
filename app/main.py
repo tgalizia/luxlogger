@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from starlette.requests import Request
 from sqlalchemy.orm import Session
 
-from app.ai_advisor import AdvisorError, advise, suggest_settings
+from app.ai_advisor import AdvisorError, advise, clean_note, suggest_settings
 from app.config import PROJECT_ROOT, get_settings
 from app.database import (
     add_indoor,
@@ -31,12 +31,11 @@ from app.database import (
     report_to_dict,
     sample_to_dict,
     samples_since,
-    save_app_preference,
     utcnow,
     indoor_to_dict,
     add_setting_change,
 )
-from app.energy import PriceError, energy_report, validate_currency, validate_price
+from app.energy import PriceError, energy_report
 from app.diagnostics import analyze, reading_from_sample
 from app.mode_status import describe_mode, mode_badges
 from app.luxtronik_client import (
@@ -45,9 +44,11 @@ from app.luxtronik_client import (
     ensure_polling,
     poll_once,
     poll_state,
+    read_controller_identity,
     read_settings,
     write_setting,
 )
+from app.runtime import PreferenceError, app_settings_payload, controller_endpoint, effective_runtime, save_app_settings
 from app.settings_catalog import SettingsError, validate_value
 
 logger = logging.getLogger("luxtronik_advisor")
@@ -91,8 +92,22 @@ class PollingIn(BaseModel):
 
 
 class AppSettingsIn(BaseModel):
-    price_per_kwh: str
+    price_per_kwh: str | None = None
     currency: str | None = None
+    luxtronik_host: str | None = None
+    luxtronik_port: int | None = None
+    pump_maker: str | None = None
+    pump_model: str | None = None
+    controller_model: str | None = None
+    controller_software: str | None = None
+    ai_provider: str | None = None
+    ai_model: str | None = None
+    advice_prompt: str | None = None
+    settings_prompt: str | None = None
+
+
+class NoteIn(BaseModel):
+    note: str | None = None
 
 
 async def _poll_loop(stop: asyncio.Event) -> None:
@@ -140,6 +155,7 @@ def app_settings_page(request: Request):
 @app.get("/api/status")
 def status(session: Session = Depends(get_db)):
     settings = get_settings()
+    host, port = controller_endpoint(session)
     health = poll_state.snapshot()
     latest = latest_sample(session)
     indoor = latest_indoor(session)
@@ -155,8 +171,8 @@ def status(session: Session = Depends(get_db)):
         "connected": health["connected"],
         "polling": health["polling"],
         "demo_mode": settings.demo_mode,
-        "host": settings.luxtronik_host,
-        "port": settings.luxtronik_port,
+        "host": host,
+        "port": port,
         "last_error": health["last_error"],
         "poll_interval_seconds": settings.poll_interval_seconds,
         "next_poll_at": isoformat_utc(health["next_poll_at"]),
@@ -209,19 +225,32 @@ def energy(
 
 @app.get("/api/app-settings")
 def read_app_settings(session: Session = Depends(get_db)):
-    return preference_to_dict(get_app_preference(session))
+    return app_settings_payload(session)
 
 
 @app.put("/api/app-settings")
 def update_app_settings(body: AppSettingsIn, session: Session = Depends(get_db)):
     try:
-        price = validate_price(body.price_per_kwh)
-        currency = validate_currency(body.currency)
-    except PriceError as exc:
+        payload = save_app_settings(session, body.model_fields_set, body)
+    except (PriceError, PreferenceError, AdvisorError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    row = save_app_preference(session, price, currency)
     session.flush()
-    return preference_to_dict(row)
+    return payload
+
+
+@app.post("/api/app-settings/equipment")
+def read_equipment(session: Session = Depends(get_db)):
+    settings = get_settings()
+    if settings.demo_mode:
+        return {"pump_model": "LWC", "controller_software": None}
+    host, port = controller_endpoint(session)
+    try:
+        return read_controller_identity(host, port)
+    except (OSError, TimeoutError) as exc:
+        raise HTTPException(status_code=503, detail=f"Could not reach the controller: {exc}") from exc
+    except Exception as exc:
+        logger.exception("Controller identity read failed")
+        raise HTTPException(status_code=502, detail=f"Could not read the controller: {exc}") from exc
 
 
 @app.get("/api/indoor")
@@ -253,10 +282,16 @@ def advice_latest(session: Session = Depends(get_db)):
 
 @app.post("/api/advice")
 def create_advice(
+    body: NoteIn | None = None,
     hours: int | None = Query(default=None, ge=1, le=168),
     session: Session = Depends(get_db),
 ):
     settings = get_settings()
+    runtime = effective_runtime(session)
+    try:
+        note = clean_note(None if body is None else body.note)
+    except AdvisorError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     window = hours or settings.advice_window_hours
     since = utcnow() - timedelta(hours=window)
     rows = samples_since(session, since)
@@ -271,7 +306,15 @@ def create_advice(
     )
     findings["window_hours"] = window
     try:
-        provider, model, suggestion = advise(findings, settings)
+        provider, model, suggestion = advise(
+            findings,
+            runtime.settings,
+            identity=runtime.identity(),
+            note=note,
+            system_prompt=runtime.advice_prompt,
+            provider=runtime.provider,
+            model=runtime.model,
+        )
     except AdvisorError as exc:
         raise HTTPException(status_code=503, detail={"message": str(exc), "findings": findings}) from exc
     except Exception as exc:
@@ -294,7 +337,7 @@ async def update_polling(body: PollingIn, session: Session = Depends(get_db)):
     return status(session)
 
 
-def _controller():
+def _controller(session: Session):
     try:
         ensure_polling()
     except QueriesPaused as exc:
@@ -302,7 +345,8 @@ def _controller():
     settings = get_settings()
     if settings.demo_mode:
         raise HTTPException(status_code=409, detail="Settings are unavailable in demo mode.")
-    return settings
+    host, port = controller_endpoint(session)
+    return settings, host, port
 
 
 def _diagnostics(session: Session, settings) -> dict:
@@ -322,10 +366,10 @@ def _diagnostics(session: Session, settings) -> dict:
 
 
 @app.get("/api/settings")
-def list_settings():
-    settings = _controller()
+def list_settings(session: Session = Depends(get_db)):
+    _settings, host, port = _controller(session)
     try:
-        rows = read_settings(settings.luxtronik_host, settings.luxtronik_port)
+        rows = read_settings(host, port)
     except (OSError, TimeoutError) as exc:
         raise HTTPException(status_code=503, detail=f"Could not reach the controller: {exc}") from exc
     except SettingsWriteError as exc:
@@ -334,17 +378,31 @@ def list_settings():
 
 
 @app.post("/api/settings/suggest")
-def create_suggestions(session: Session = Depends(get_db)):
-    settings = _controller()
+def create_suggestions(body: NoteIn | None = None, session: Session = Depends(get_db)):
+    try:
+        note = clean_note(None if body is None else body.note)
+    except AdvisorError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    settings, host, port = _controller(session)
+    runtime = effective_runtime(session)
     findings = _diagnostics(session, settings)
     try:
-        current = read_settings(settings.luxtronik_host, settings.luxtronik_port)
+        current = read_settings(host, port)
     except (OSError, TimeoutError) as exc:
         raise HTTPException(status_code=503, detail=f"Could not reach the controller: {exc}") from exc
     except SettingsWriteError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     try:
-        changes = suggest_settings(current, findings, settings)
+        changes = suggest_settings(
+            current,
+            findings,
+            runtime.settings,
+            identity=runtime.identity(),
+            note=note,
+            system_prompt=runtime.settings_prompt,
+            provider=runtime.provider,
+            model=runtime.model,
+        )
     except AdvisorError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
@@ -355,10 +413,10 @@ def create_suggestions(session: Session = Depends(get_db)):
 
 @app.post("/api/settings/apply")
 def apply_setting(body: ApplyIn, session: Session = Depends(get_db)):
-    settings = _controller()
+    _settings, host, port = _controller(session)
     try:
         validate_value(body.id, body.value, body.value)
-        result = write_setting(settings.luxtronik_host, settings.luxtronik_port, body.id, body.value)
+        result = write_setting(host, port, body.id, body.value)
     except SettingsError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except SettingsWriteError as exc:
