@@ -2,7 +2,16 @@
 
 import pytest
 
-from app.ai_advisor import AdvisorError, context_block, suggest_settings, validate_model, validate_provider
+from app.ai_advisor import (
+    SETTINGS_PROMPT,
+    SYSTEM_PROMPT,
+    AdvisorError,
+    context_block,
+    suggest_settings,
+    validate_model,
+    validate_provider,
+    with_context,
+)
 from app.luxtronik_client import SettingsWriteError, commit_setting
 from app.runtime import PreferenceError, validate_port
 from app.settings_catalog import SettingsError, filter_changes, validate_value
@@ -88,9 +97,25 @@ def test_note_reaches_the_settings_prompt():
         note="Too many starts",
     )
     assert accepted == []
-    assert "Pump maker: Novelan" in seen["prompt"]
-    assert "Owner note:\nToo many starts" in seen["prompt"]
-    assert "Controller:" not in seen["prompt"]
+    prompt = seen["prompt"]
+    assert "Pump maker: Novelan" in prompt
+    assert "Owner note:\nToo many starts" in prompt
+    assert "Controller:" not in prompt
+    assert prompt.index("Equipment:") < prompt.index("Owner note:") < prompt.index("Current settings JSON:")
+
+
+def test_equipment_and_note_lead_the_user_message():
+    prompt = with_context("Diagnostics JSON:\n{}", {"pump_model": "LD7"}, "Cold mornings")
+    assert prompt.index("Equipment:") < prompt.index("Owner note:") < prompt.index("Diagnostics JSON:")
+
+
+def test_prompts_use_equipment_and_answer_the_owner_note_first():
+    for prompt in (SYSTEM_PROMPT, SETTINGS_PROMPT):
+        assert "pump maker, pump model, controller, and controller software" in prompt
+        assert "answer that goal or problem first" in prompt
+        assert "Alpha Innotec" not in prompt
+        assert "Luxtronik 2" not in prompt
+    assert "you may change it to an allowed mode" in SETTINGS_PROMPT
 
 
 def test_unknown_provider_and_model_are_rejected():

@@ -8,6 +8,7 @@
   --accent: #9a3412;
 }
 * { box-sizing: border-box; }
+html { scrollbar-gutter: stable; }
 body {
   margin: 0;
   font-family: "Avenir Next", "Segoe UI", sans-serif;
@@ -15,14 +16,11 @@ body {
   background: var(--paper);
 }
 main {
-  max-width: 1200px;
+  width: min(100%, 1500px);
+  max-width: 1500px;
   margin: 0 auto;
   padding: 28px 20px 48px;
 }
-main.narrow { max-width: 1200px; }
-main.narrow header,
-main.narrow .card,
-main.narrow .hint { max-width: 640px; }
 header { margin-bottom: 20px; }
 h1 { font-size: 1.7rem; margin: 0 0 4px; }
 h2 { font-size: 1.05rem; margin: 0 0 12px; }
@@ -38,7 +36,8 @@ a { color: var(--accent); font-weight: 600; }
   backdrop-filter: blur(12px);
 }
 .toolbar-inner {
-  max-width: 1200px;
+  width: min(100%, 1500px);
+  max-width: 1500px;
   margin: 0 auto;
   padding: 10px 20px;
   display: flex;

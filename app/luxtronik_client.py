@@ -74,14 +74,19 @@ class PollState:
     def set_polling(self, enabled: bool) -> bool:
         with self._lock:
             self.polling = bool(enabled)
+            if not self.polling:
+                self.next_poll_at = None
             return self.polling
 
     def is_polling(self) -> bool:
         with self._lock:
             return self.polling
 
-    def schedule_next(self, when: datetime) -> None:
+    def schedule_next(self, when: datetime | None) -> None:
         with self._lock:
+            if not self.polling:
+                self.next_poll_at = None
+                return
             self.next_poll_at = when
 
     def mark_ok(self, when: datetime) -> None:
@@ -133,6 +138,8 @@ def poll_once() -> None:
             snapshot = demo_snapshot(recorded_at)
         else:
             snapshot = read_live_snapshot(host, port, recorded_at)
+    except QueriesPaused:
+        return
     except (OSError, ConnectionError, TimeoutError, struct.error) as exc:
         poll_state.mark_error(str(exc) or exc.__class__.__name__)
         logger.warning("Luxtronik read failed: %s", exc)
@@ -154,6 +161,7 @@ def poll_once() -> None:
 
 def read_controller_identity(host: str, port: int) -> dict:
     """Read the pump series code and controller software. Does not write."""
+    ensure_polling()
     from luxtronik import Luxtronik
 
     previous_timeout = socket.getdefaulttimeout()
@@ -171,6 +179,7 @@ def read_controller_identity(host: str, port: int) -> dict:
 
 def read_live_snapshot(host: str, port: int, recorded_at: datetime) -> Snapshot:
     """Open the config socket, read calculations, and close. Does not write."""
+    ensure_polling()
     from luxtronik import Luxtronik
 
     previous_timeout = socket.getdefaulttimeout()
@@ -438,6 +447,7 @@ def commit_setting(pump, setting_id: str, value) -> dict:
 
 
 def _with_pump(host: str, port: int, action):
+    ensure_polling()
     from luxtronik import Luxtronik
 
     previous_timeout = socket.getdefaulttimeout()

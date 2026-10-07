@@ -4,7 +4,7 @@
 {% block title %}App settings{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="/static/app_settings.css?v=5" />
+<link rel="stylesheet" href="/static/app_settings.css?v=6" />
 {% endblock %}
 
 {% block body %}
@@ -22,6 +22,14 @@
 <label>
   Port
   <input id="port" name="luxtronik_port" type="number" min="1" max="65535" required />
+</label>
+<label class="query-switch">
+  Data fetching
+  <span class="switch-row">
+    <input id="controller-query" type="checkbox" checked />
+    <span class="switch" aria-hidden="true"></span>
+    <span id="fetch-state">On</span>
+  </span>
 </label>
 <button type="submit">Save</button>
 <p id="connection-status" class="form-status" hidden></p>
@@ -98,5 +106,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/app_settings.js?v=4"></script>
+<script src="/static/app_settings.js?v=5"></script>
 {% endblock %}

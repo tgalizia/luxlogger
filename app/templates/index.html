@@ -6,7 +6,7 @@
 {% block head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-<link rel="stylesheet" href="/static/dashboard.css?v=6" />
+<link rel="stylesheet" href="/static/dashboard.css?v=10" />
 {% endblock %}
 
 {% block body %}
@@ -39,8 +39,21 @@
   </div>
   {% endcall %}
   {% call ui.card() %}
-  <div class="label">Outdoor</div>
+  <div class="label">Outdoor temperature</div>
   <div class="value" id="outdoor">—</div>
+  {% endcall %}
+  {% call ui.card("article", "indoor-log") %}
+  <form id="indoor-form">
+    <div class="label">Indoor temperature</div>
+    <div class="indoor-row">
+      <label>
+        <input name="temperature_c" type="number" min="-10" max="45" step="0.1" inputmode="decimal" aria-label="Indoor temperature °C" required />
+        °C
+      </label>
+      <button type="submit">Save</button>
+    </div>
+    <p id="form-message"></p>
+  </form>
   {% endcall %}
   {% call ui.card() %}
   <div class="device-row">
@@ -99,38 +112,11 @@
   </div>
 </div>
 {% endcall %}
-<div class="split">
-  {% call ui.card("section") %}
-  <h2>Room temperature</h2>
-  <form id="indoor-form">
-    <label>
-      Room
-      <input id="room" name="room" value="living room" maxlength="80" required />
-    </label>
-    <label>
-      Temperature °C
-      <input name="temperature_c" type="number" min="-10" max="45" step="0.1" required />
-    </label>
-    <button type="submit">Save reading</button>
-  </form>
-  <p id="form-message"></p>
-  {% endcall %}
-  {% call ui.card("section") %}
-  <h2>Optimization</h2>
-  <div id="findings"></div>
-  <p id="advice-body">Ask for a suggestion after a few samples have been stored.</p>
-  <label>
-    What should the advisor solve?
-    <textarea id="advice-note" maxlength="2000" rows="3" placeholder="A goal or a problem, for example a cold morning or too many compressor starts."></textarea>
-  </label>
-  <button id="advice-button" type="button">Ask advisor</button>
-  {% endcall %}
-</div>
 <footer>
   <p>This page only reads the heat pump. Confirmed changes are made on the settings page.</p>
 </footer>
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/app.js?v=28"></script>
+<script src="/static/app.js?v=34"></script>
 {% endblock %}

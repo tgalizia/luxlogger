@@ -53,6 +53,7 @@ from app.settings_catalog import SettingsError, validate_value
 
 logger = logging.getLogger("luxtronik_advisor")
 templates = Jinja2Templates(directory=str(PROJECT_ROOT / "app" / "templates"))
+_poll_wake: asyncio.Event | None = None
 
 
 @asynccontextmanager
@@ -61,15 +62,22 @@ async def lifespan(_app: FastAPI):
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
+    global _poll_wake
     init_db()
     stop = asyncio.Event()
+    wake = asyncio.Event()
+    _poll_wake = wake
     await asyncio.to_thread(poll_once)
-    task = asyncio.create_task(_poll_loop(stop))
-    yield
-    stop.set()
-    task.cancel()
-    with suppress(asyncio.CancelledError):
-        await task
+    task = asyncio.create_task(_poll_loop(stop, wake))
+    try:
+        yield
+    finally:
+        _poll_wake = None
+        stop.set()
+        wake.set()
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
 
 
 app = FastAPI(title="Luxtronik AI Advisor", lifespan=lifespan)
@@ -110,14 +118,38 @@ class NoteIn(BaseModel):
     note: str | None = None
 
 
-async def _poll_loop(stop: asyncio.Event) -> None:
+async def _wait_until(stop: asyncio.Event, wake: asyncio.Event, timeout: float | None) -> None:
+    """Wait for shutdown, a pause change, or the poll interval."""
+    stop_task = asyncio.create_task(stop.wait())
+    wake_task = asyncio.create_task(wake.wait())
+    try:
+        await asyncio.wait(
+            [stop_task, wake_task],
+            timeout=timeout,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+    finally:
+        stop_task.cancel()
+        wake_task.cancel()
+        await asyncio.gather(stop_task, wake_task, return_exceptions=True)
+
+
+async def _poll_loop(stop: asyncio.Event, wake: asyncio.Event) -> None:
     while not stop.is_set():
+        if not poll_state.is_polling():
+            await _wait_until(stop, wake, None)
+            wake.clear()
+            continue
         interval = get_settings().poll_interval_seconds
         due = datetime.now(timezone.utc) + timedelta(seconds=interval)
         poll_state.schedule_next(due)
-        try:
-            await asyncio.wait_for(stop.wait(), timeout=interval)
-        except asyncio.TimeoutError:
+        await _wait_until(stop, wake, interval)
+        if stop.is_set():
+            break
+        if wake.is_set():
+            wake.clear()
+            continue
+        if poll_state.is_polling():
             await asyncio.to_thread(poll_once)
 
 
@@ -140,6 +172,11 @@ def favicon():
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     return _page(request, "index.html", "dashboard")
+
+
+@app.get("/optimization", response_class=HTMLResponse)
+def optimization_page(request: Request):
+    return _page(request, "optimization.html", "optimization")
 
 
 @app.get("/settings", response_class=HTMLResponse)
@@ -246,6 +283,8 @@ def read_equipment(session: Session = Depends(get_db)):
     host, port = controller_endpoint(session)
     try:
         return read_controller_identity(host, port)
+    except QueriesPaused as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (OSError, TimeoutError) as exc:
         raise HTTPException(status_code=503, detail=f"Could not reach the controller: {exc}") from exc
     except Exception as exc:
@@ -332,6 +371,9 @@ def create_advice(
 async def update_polling(body: PollingIn, session: Session = Depends(get_db)):
     enabled = poll_state.set_polling(body.enabled)
     logger.info("Controller queries %s", "enabled" if enabled else "paused")
+    if _poll_wake is not None:
+        _poll_wake.set()
+        await asyncio.sleep(0)
     if enabled:
         await asyncio.to_thread(poll_once)
     return status(session)

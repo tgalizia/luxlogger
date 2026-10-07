@@ -1,14 +1,12 @@
 const modesEl = document.querySelector("#modes");
 const rowsEl = document.querySelector("#rows");
 const statusEl = document.querySelector("#status");
-const suggestButton = document.querySelector("#suggest");
 const dialog = document.querySelector("#confirm-dialog");
 const confirmText = document.querySelector("#confirm-text");
 const confirmOk = document.querySelector("#confirm-ok");
 const confirmCancel = document.querySelector("#confirm-cancel");
 
 let settings = [];
-let suggestions = null;
 let pending = null;
 let sending = false;
 
@@ -33,11 +31,6 @@ function display(setting, value) {
     return setting.unit ? `${number} ${setting.unit}` : number;
   }
   return optionLabel(setting, value);
-}
-
-function suggestionFor(id) {
-  if (!suggestions) return null;
-  return suggestions[id] || null;
 }
 
 const MODE_IDS = ["ID_Ba_Hz_akt", "ID_Ba_Bw_akt"];
@@ -97,13 +90,9 @@ function render() {
   renderModes();
   rowsEl.replaceChildren();
   for (const setting of settings) {
-    const suggestion = suggestionFor(setting.id);
+    if (MODE_IDS.includes(setting.id)) continue;
     const article = document.createElement("article");
     article.className = "card";
-    const row = document.createElement("div");
-    row.className = "row";
-
-    const copy = document.createElement("div");
     const title = document.createElement("h2");
     title.textContent = setting.label;
     const currentLabel = document.createElement("div");
@@ -112,30 +101,7 @@ function render() {
     const current = document.createElement("div");
     current.className = "value";
     current.textContent = setting.display || display(setting, setting.value);
-    const suggestionLabel = document.createElement("div");
-    suggestionLabel.className = "label";
-    suggestionLabel.textContent = "Suggestion";
-    const suggested = document.createElement("div");
-    suggested.className = "value";
-    suggested.textContent = suggestion ? display(setting, suggestion.value) : "No change";
-    copy.append(title, currentLabel, current, suggestionLabel, suggested);
-
-    if (suggestion && suggestion.reason) {
-      const reason = document.createElement("p");
-      reason.className = "reason";
-      reason.textContent = suggestion.reason;
-      copy.append(reason);
-    }
-
-    row.append(copy);
-    if (suggestion) {
-      const apply = document.createElement("button");
-      apply.type = "button";
-      apply.textContent = "Apply";
-      apply.addEventListener("click", () => openConfirm(setting, suggestion.value, true));
-      row.append(apply);
-    }
-    article.append(row);
+    article.append(title, currentLabel, current);
     rowsEl.append(article);
   }
 }
@@ -160,7 +126,7 @@ async function load() {
   const statusBody = await statusResponse.json().catch(() => ({}));
   const polling = statusResponse.ok && statusBody.polling !== false;
   if (!polling) {
-    statusEl.textContent = "Controller queries are paused.";
+    statusEl.textContent = "Data fetching is off.";
     return;
   }
   const response = await fetch("/api/settings");
@@ -176,37 +142,10 @@ async function load() {
 
 window.addEventListener("controller-polling", async (event) => {
   if (event.detail.polling === false) {
-    statusEl.textContent = "Controller queries are paused.";
+    statusEl.textContent = "Data fetching is off.";
     return;
   }
   await load();
-});
-
-suggestButton.addEventListener("click", async () => {
-  suggestButton.disabled = true;
-  statusEl.textContent = "Looking at the last 24 hours…";
-  try {
-    const response = await fetch("/api/settings/suggest", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ note: document.querySelector("#owner-note").value }),
-    });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      statusEl.textContent = detailMessage(body);
-      return;
-    }
-    settings = body.settings;
-    suggestions = {};
-    for (const change of body.changes) suggestions[change.id] = change;
-    const count = body.changes.length;
-    statusEl.textContent = count === 0
-      ? "No changes suggested. Every setting stays as it is."
-      : "Review each suggestion. Nothing is sent until you confirm it.";
-    render();
-  } finally {
-    suggestButton.disabled = false;
-  }
 });
 
 confirmCancel.addEventListener("click", () => {
@@ -242,7 +181,6 @@ confirmOk.addEventListener("click", async () => {
     pending = null;
     dialog.close();
     settings = settings.map((setting) => setting.id === payload.setting.id ? payload.setting : setting);
-    if (suggestions) delete suggestions[payload.setting.id];
     statusEl.textContent = payload.changed
       ? `${payload.setting.label} is now ${payload.setting.display}.`
       : `${payload.setting.label} was already ${payload.setting.display}.`;

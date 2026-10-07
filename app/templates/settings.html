@@ -4,21 +4,14 @@
 {% block title %}Heat pump settings{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="/static/settings.css?v=3" />
+<link rel="stylesheet" href="/static/settings.css?v=6" />
 {% endblock %}
 
 {% block body %}
 <header>
   {{ ui.header_copy("Heat pump settings", "A change is sent only after you confirm that one setting.") }}
 </header>
-<label class="owner-note">
-  What should the advisor solve?
-  <textarea id="owner-note" maxlength="2000" rows="3" placeholder="A goal or a problem, for example a cold morning or too many compressor starts."></textarea>
-</label>
-<div class="page-actions">
-  <button id="suggest" type="button">Suggest from history</button>
-  <p id="status">Loading the current values.</p>
-</div>
+<p id="status">Loading the current values.</p>
 <section id="modes"></section>
 <section id="rows"></section>
 <dialog id="confirm-dialog">
@@ -32,5 +25,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/settings.js?v=9"></script>
+<script src="/static/settings.js?v=12"></script>
 {% endblock %}

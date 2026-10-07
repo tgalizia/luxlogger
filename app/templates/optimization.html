@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block title %}AI Optimization{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/optimization.css?v=6" />
+{% endblock %}
+
+{% block body %}
+<header>
+  {{ ui.header_copy("AI Optimization", "Ask the advisor what to change from the samples already stored.") }}
+</header>
+<div id="findings"></div>
+<div class="advice-row">
+  {% call ui.card("section") %}
+  <h2>Ask advisor</h2>
+  <label>
+    What should the advisor solve?
+    <textarea id="advice-note" maxlength="2000" rows="8" placeholder="A goal or a problem, for example a cold morning or too many compressor starts."></textarea>
+  </label>
+  <div class="advice-actions">
+    <button id="advice-button" type="button">Ask advisor</button>
+    <button id="suggest-button" type="button">Suggest from history</button>
+  </div>
+  {% endcall %}
+  {% call ui.card("section") %}
+  <h2>AI Suggestions</h2>
+  <div id="advice-body">
+    <p class="advice-status">Ask for a suggestion after a few samples have been stored.</p>
+  </div>
+  <p id="advice-meta" hidden></p>
+  {% endcall %}
+</div>
+<section id="setting-changes" class="card" hidden>
+  <h2>Setting changes</h2>
+  <p id="changes-status"></p>
+  <div id="changes"></div>
+</section>
+<dialog id="confirm-dialog">
+  <h2>Confirm change</h2>
+  <p id="confirm-text"></p>
+  <div class="actions">
+    <button id="confirm-cancel" class="secondary" type="button">Cancel</button>
+    <button id="confirm-ok" type="button">Confirm</button>
+  </div>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/optimization.js?v=3"></script>
+{% endblock %}

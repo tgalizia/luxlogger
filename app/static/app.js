@@ -1,6 +1,5 @@
 const statusUrl = "/api/status";
 const indoorUrl = "/api/indoor";
-const adviceUrl = "/api/advice";
 
 const RANGES = {
   hour: { unit: "minute", empty: "No samples in the last hour yet." },
@@ -26,18 +25,13 @@ const fields = {
   energyNote: document.querySelector("#energy-note"),
   energyPeriod: document.querySelector("#energy-period"),
   energyMeter: document.querySelector("#energy-meter"),
-  adviceBody: document.querySelector("#advice-body"),
-  findings: document.querySelector("#findings"),
   formMessage: document.querySelector("#form-message"),
-  polling: document.querySelector("#controller-query"),
 };
 
 const indoorForm = document.querySelector("#indoor-form");
-const adviceButton = document.querySelector("#advice-button");
 let heatingChart;
 let hotWaterChart;
 let devicesChart;
-let advicePending = false;
 
 function text(node, value) {
   node.textContent = value;
@@ -58,15 +52,6 @@ function formatNumber(value, digits, unit) {
     useGrouping: false,
   }).format(Number(value));
   return `${text}${unit}`;
-}
-
-function formatDuration(seconds) {
-  if (missing(seconds)) return "—";
-  const total = Math.round(Number(seconds));
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.round((total % 3600) / 60);
-  if (hours <= 0) return `${minutes} min`;
-  return `${hours} h ${minutes} min`;
 }
 
 function formatWhen(iso) {
@@ -142,7 +127,7 @@ function renderStatus(payload) {
     const when = payload.last_success_at
       ? `Last read ${formatWhen(payload.last_success_at)}.`
       : "No successful read yet.";
-    text(fields.connectionDetail, `Queries paused. ${when}`);
+    text(fields.connectionDetail, `Data fetching is off. ${when}`);
   } else {
     const detail = payload.last_error
       ? payload.last_error
@@ -175,23 +160,27 @@ function renderSwitch(node, on) {
 }
 
 const seriesColors = {
-  "Flow, heating": "#2563eb",
-  "Return, heating": "#ea580c",
-  "Flow, hot water": "#0284c7",
-  "Return, hot water": "#d97706",
-  Outdoor: "#7c3aed",
+  "Heating Flow": "#dc2626",
+  "Heating Return": "#7c3aed",
+  "Temperature Outdoor": "#2563eb",
   "Hot water": "#e11d48",
-  Indoor: "#059669",
+  "Temperature Indoor": "#059669",
 };
+
+const HEATING_SCALE = { min: 18, max: 28 };
+const HOT_WATER_SCALE = { min: 38, max: 48 };
+const OUTDOOR_SCALE = { min: 5, max: 20 };
+const MIN_TEMP_SPAN = 4;
 
 function hotWaterCircuit(sample) {
   return sample.operating_mode === "hot water";
 }
 
-function series(label, samples, key, accept = () => true) {
+function series(label, samples, key, accept = () => true, yAxisID = "y") {
   const color = seriesColors[label];
   return {
     label,
+    yAxisID,
     data: samples
       .filter((sample) => accept(sample) && !missing(sample[key]))
       .map((sample) => ({ x: sample.recorded_at, y: sample[key] })),
@@ -204,7 +193,7 @@ function series(label, samples, key, accept = () => true) {
 }
 
 function circuitSeries(name, samples, key, hotWater) {
-  const label = `${name}, ${hotWater ? "hot water" : "heating"}`;
+  const label = hotWater ? `${name}, hot water` : `Heating ${name}`;
   const heating = (sample) => !hotWaterCircuit(sample);
   return series(label, samples, key, hotWater ? hotWaterCircuit : heating);
 }
@@ -280,17 +269,51 @@ function timeAxis(range, window) {
   };
 }
 
-function chartOptions(range, window) {
+function temperatureBounds(datasets) {
+  const values = datasets.flatMap((dataset) =>
+    dataset.data.map((point) => point.y).filter((value) => !missing(value)),
+  );
+  if (!values.length) return null;
+  let low = Math.min(...values);
+  let high = Math.max(...values);
+  if (high - low < MIN_TEMP_SPAN) {
+    const mid = (low + high) / 2;
+    low = mid - MIN_TEMP_SPAN / 2;
+    high = mid + MIN_TEMP_SPAN / 2;
+  }
+  const pad = Math.max(0.4, (high - low) * 0.05);
+  return { min: Math.floor(low - pad), max: Math.ceil(high + pad) };
+}
+
+function degreeScale(scale, position, title) {
+  const axis = {
+    position,
+    min: scale.min,
+    max: scale.max,
+    title: { display: true, text: title },
+    ticks: { maxTicksLimit: 8 },
+  };
+  if (position === "right") axis.grid = { drawOnChartArea: false };
+  return axis;
+}
+
+function chartOptions(range, window, bounds, fallback, showLegend = true) {
   return {
     responsive: true,
     maintainAspectRatio: false,
     interaction: { mode: "index", intersect: false },
-    plugins: { legend: legendOptions() },
+    plugins: { legend: showLegend ? legendOptions() : { display: false } },
     scales: {
       x: timeAxis(range, window),
-      y: { title: { display: true, text: "°C" }, grace: "12%" },
+      y: degreeScale(bounds || fallback, "left", "°C"),
     },
   };
+}
+
+function heatingChartOptions(range, window, circuitBounds, outdoorBounds) {
+  const options = chartOptions(range, window, circuitBounds, HEATING_SCALE);
+  options.scales.yOutdoor = degreeScale(outdoorBounds || OUTDOOR_SCALE, "right", "Outdoor °C");
+  return options;
 }
 
 function extraHeaterOn(sample) {
@@ -362,9 +385,7 @@ function upsertChart(existing, canvas, datasets, options) {
     return new Chart(canvas, { type: "line", data: { datasets }, options });
   }
   existing.data.datasets = datasets;
-  existing.options.scales.x.min = options.scales.x.min;
-  existing.options.scales.x.max = options.scales.x.max;
-  existing.options.scales.x.time.unit = options.scales.x.time.unit;
+  existing.options.scales = options.scales;
   existing.update();
   return existing;
 }
@@ -375,65 +396,58 @@ function renderChart(samples, indoor, range, window) {
     return;
   }
   text(fields.chartMessage, samples.length ? "" : RANGES[range].empty);
-  const heating = withHidden(
-    [
-      circuitSeries("Flow", samples, "flow_temp", false),
-      circuitSeries("Return", samples, "return_temp", false),
-      circuitSeries("Flow", samples, "flow_temp", true),
-      circuitSeries("Return", samples, "return_temp", true),
-      series("Outdoor", samples, "outdoor_temp"),
-      {
-        label: "Indoor",
-        data: indoor.map((reading) => ({ x: reading.recorded_at, y: reading.temperature_c })),
-        borderColor: seriesColors.Indoor,
-        backgroundColor: seriesColors.Indoor,
-        pointRadius: 4,
-        borderWidth: 3,
-        showLine: true,
-        spanGaps: true,
-      },
-    ],
-    hiddenLabels(heatingChart),
-  );
-  const hotWater = withHidden([series("Hot water", samples, "dhw_temp")], hiddenLabels(hotWaterChart));
+  const heatingHidden = hiddenLabels(heatingChart);
+  const circuit = [
+    circuitSeries("Flow", samples, "flow_temp", false),
+    circuitSeries("Return", samples, "return_temp", false),
+    {
+      label: "Temperature Indoor",
+      yAxisID: "y",
+      data: indoor.map((reading) => ({ x: reading.recorded_at, y: reading.temperature_c })),
+      borderColor: seriesColors["Temperature Indoor"],
+      backgroundColor: seriesColors["Temperature Indoor"],
+      pointRadius: 4,
+      borderWidth: 3,
+      showLine: true,
+      spanGaps: true,
+    },
+  ];
+  const outdoor = series("Temperature Outdoor", samples, "outdoor_temp", () => true, "yOutdoor");
+  const heating = withHidden([...circuit, outdoor], heatingHidden);
+  const hotWaterSeries = [series("Hot water", samples, "dhw_temp")];
+  const hotWaterHidden = hiddenLabels(hotWaterChart);
+  const hotWater = withHidden(hotWaterSeries, hotWaterHidden);
   const devices = withHidden(
     [
-      deviceSeries("Compressor", samples, (sample) => Boolean(sample.compressor_running), "#b45309", 1),
-      deviceSeries("Extra heater", samples, extraHeaterOn, "#be123c", 0),
+      deviceSeries("Compressor", samples, (sample) => Boolean(sample.compressor_running), "#2563eb", 1),
+      deviceSeries("Extra heater", samples, extraHeaterOn, "#dc2626", 0),
     ],
     hiddenLabels(devicesChart),
   );
-  heatingChart = upsertChart(heatingChart, document.querySelector("#chart"), heating, chartOptions(range, window));
-  hotWaterChart = upsertChart(hotWaterChart, document.querySelector("#dhw-chart"), hotWater, chartOptions(range, window));
+  const shown = (datasets, hidden) => datasets.filter((dataset) => !hidden.has(dataset.label));
+  heatingChart = upsertChart(
+    heatingChart,
+    document.querySelector("#chart"),
+    heating,
+    heatingChartOptions(
+      range,
+      window,
+      temperatureBounds(shown(circuit, heatingHidden)),
+      temperatureBounds(shown([outdoor], heatingHidden)),
+    ),
+  );
+  hotWaterChart = upsertChart(
+    hotWaterChart,
+    document.querySelector("#dhw-chart"),
+    hotWater,
+    chartOptions(range, window, temperatureBounds(shown(hotWaterSeries, hotWaterHidden)), HOT_WATER_SCALE, false),
+  );
   devicesChart = upsertChart(
     devicesChart,
     document.querySelector("#devices-chart"),
     devices,
     deviceChartOptions(range, window),
   );
-}
-
-function renderFindings(findings) {
-  fields.findings.replaceChildren();
-  if (!findings) return;
-  const rows = [
-    ["Samples", findings.sample_count],
-    ["Compressor starts", findings.compressor_starts],
-    ["Short cycles", `${findings.short_cycles} of ${findings.completed_cycles}`],
-    ["Compressor on", formatDuration(findings.compressor_on_time_s)],
-    ["Backup heater", formatDuration(findings.backup_heater_on_time_s)],
-    ["Flow − return", formatNumber(findings.mean_flow_return_delta_c, 1, " °C")],
-    ["Return vs setpoint", formatNumber(findings.mean_return_minus_setpoint_c, 1, " °C")],
-  ];
-  for (const [label, value] of rows) {
-    const item = document.createElement("div");
-    const name = document.createElement("span");
-    name.textContent = label;
-    const number = document.createElement("strong");
-    number.textContent = missing(value) ? "—" : String(value);
-    item.append(name, number);
-    fields.findings.append(item);
-  }
 }
 
 function formatPrice(value, currency) {
@@ -527,18 +541,6 @@ function renderEnergy(payload) {
   );
 }
 
-function renderAdvice(report, message) {
-  renderFindings(report && report.findings);
-  if (report && report.suggestion) {
-    text(
-      fields.adviceBody,
-      `${report.suggestion}\n\n${report.provider} · ${report.model} · ${formatWhen(report.created_at)}`,
-    );
-    return;
-  }
-  text(fields.adviceBody, message || "Ask for a suggestion after a few samples have been stored.");
-}
-
 let refreshGeneration = 0;
 
 async function refresh() {
@@ -547,18 +549,16 @@ async function refresh() {
   const range = chartRange;
   const window = chartWindow(range);
   const since = encodeURIComponent(window.start.toISOString());
-  const [statusResponse, telemetryResponse, indoorResponse, adviceResponse, energyResponse] = await Promise.all([
+  const [statusResponse, telemetryResponse, indoorResponse, energyResponse] = await Promise.all([
     fetch(statusUrl),
     fetch(`/api/telemetry?since=${since}`),
     fetch(`${indoorUrl}?since=${since}`),
-    fetch("/api/advice/latest"),
     fetch(`/api/energy?since=${since}`),
   ]);
   if (generation !== refreshGeneration) return;
   if (statusResponse.ok) {
     const payload = await statusResponse.json();
-    if (pollingSeen !== pollingGeneration) payload.polling = fields.polling.checked;
-    renderStatus(payload);
+    if (pollingSeen === pollingGeneration) renderStatus(payload);
   }
   const samples = telemetryResponse.ok ? (await telemetryResponse.json()).samples : [];
   const indoor = indoorResponse.ok ? (await indoorResponse.json()).readings : [];
@@ -573,10 +573,6 @@ async function refresh() {
     const error = await readError(energyResponse);
     renderEnergy(null);
     text(fields.energyNote, error.message);
-  }
-  if (!advicePending && adviceResponse.ok) {
-    const payload = await adviceResponse.json();
-    if (payload.report) renderAdvice(payload.report);
   }
 }
 
@@ -597,7 +593,6 @@ indoorForm.addEventListener("submit", async (event) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       temperature_c: Number(data.get("temperature_c")),
-      room: data.get("room"),
     }),
   });
   if (!response.ok) {
@@ -606,33 +601,9 @@ indoorForm.addEventListener("submit", async (event) => {
     return;
   }
   const saved = await response.json();
-  text(fields.formMessage, `Saved ${formatNumber(saved.temperature_c, 1, " °C")} for ${saved.room}.`);
+  text(fields.formMessage, `Saved ${formatNumber(saved.temperature_c, 1, " °C")}.`);
   indoorForm.reset();
-  document.querySelector("#room").value = saved.room;
   refresh();
-});
-
-adviceButton.addEventListener("click", async () => {
-  advicePending = true;
-  adviceButton.disabled = true;
-  text(fields.adviceBody, "Reading the last day of samples…");
-  try {
-    const response = await fetch(adviceUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ note: document.querySelector("#advice-note").value }),
-    });
-    if (!response.ok) {
-      const error = await readError(response);
-      renderAdvice(error.findings ? { findings: error.findings, suggestion: "" } : null, error.message);
-      if (error.findings) text(fields.adviceBody, error.message);
-      return;
-    }
-    renderAdvice(await response.json());
-  } finally {
-    advicePending = false;
-    adviceButton.disabled = false;
-  }
 });
 
 document.querySelectorAll(".ranges button").forEach((button) => {

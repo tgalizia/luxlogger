@@ -23,10 +23,11 @@ MODEL_CHOICES = {
 NOTE_LIMIT = 2000
 PROMPT_LIMIT = 8000
 
-SYSTEM_PROMPT = """You advise the owner of an Alpha Innotec heat pump controlled by Luxtronik 2.
-You receive diagnostics computed from local measurements. Use only those figures.
-The user message may name the heat pump and controller, and may include an owner note about a goal or a problem. Address that note. The only configuration to mention is heating mode, hot water mode, hot water temperature, and the heating setpoint.
-Explain short cycling, compressor runtime, backup-heater use, and flow/return temperatures when the figures speak to them.
+SYSTEM_PROMPT = """You advise the owner of a heat pump.
+When the user message lists Equipment, use those lines: pump maker, pump model, controller, and controller software. Do not assume a different machine.
+When the user message includes an owner note, answer that goal or problem first, then use the diagnostics with it. Do not invent measurements.
+The only configuration to mention is heating mode, hot water mode, hot water temperature, and the heating setpoint.
+Explain short cycling, compressor runtime, backup-heater use, and flow/return temperatures when the figures speak to them. Also use outdoor temperature, indoor temperature, and operating mode when those figures speak to the note.
 Suggest practical steps the owner can take, such as a schedule or setback change, or when to ask a technician to check flow.
 Do not tell the user to write controller parameters, registers, or service-menu values. This service cannot change the heat pump.
 Write plain sentences. No preamble. At most 220 words."""
@@ -34,10 +35,11 @@ Write plain sentences. No preamble. At most 220 words."""
 SETTINGS_PROMPT = """You suggest optional changes to four household heat-pump settings.
 Return only JSON: {"changes":[{"id":"...","value":...,"reason":"..."}]}
 The changes list may be empty.
-The user message may name the heat pump and controller, and may include an owner note about a goal or a problem. Address that note.
+When the user message lists Equipment, use those lines: pump maker, pump model, controller, and controller software. Do not assume a different machine.
+When the user message includes an owner note, answer that goal or problem first, and use it together with the diagnostics.
 Leave a setting out unless the diagnostics or the owner note show a concrete reason to change it.
 Do not invent a change. Prefer no change.
-Never suggest Second heatsource.
+Never suggest Second heatsource. If the current mode is already Second heatsource, you may change it to an allowed mode.
 Allowed settings:
 - ID_Ba_Hz_akt heating mode: Automatic, Party, Holidays, or Off
 - ID_Ba_Bw_akt hot water mode: Automatic, Party, Holidays, or Off
@@ -108,7 +110,7 @@ def with_context(body: str, identity: dict | None = None, note: str | None = Non
     extra = context_block(identity, note)
     if not extra:
         return body
-    return f"{body}\n\n{extra}"
+    return f"{extra}\n\n{body}"
 
 
 def advise(
@@ -273,7 +275,6 @@ def _gemini(model: str, api_key: str, user_prompt: str, system_prompt: str) -> s
         contents=user_prompt,
         config={
             "system_instruction": system_prompt,
-            "temperature": 0.3,
             "automatic_function_calling": {"disable": True},
         },
     )

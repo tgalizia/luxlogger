@@ -20,6 +20,9 @@
       {% call toolbar_link("/", "dashboard", "Dashboard", active) %}
       <i class="fa-solid fa-house" aria-hidden="true"></i>
       {% endcall %}
+      {% call toolbar_link("/optimization", "optimization", "AI Optimization", active) %}
+      <i class="fa-solid fa-lightbulb" aria-hidden="true"></i>
+      {% endcall %}
       {% call toolbar_link("/settings", "settings", "Pump settings", active) %}
       <i class="fa-solid fa-fan" aria-hidden="true"></i>
       {% endcall %}
@@ -28,7 +31,6 @@
       {% endcall %}
     </nav>
     <div class="toolbar-status">
-      {{ query_switch() }}
       <div id="refresh-gauge" class="refresh-gauge" data-refresh-seconds="{{ refresh_seconds }}" title="Seconds until the next controller read" aria-label="Next read in {{ refresh_seconds }} seconds">
         <svg viewBox="0 0 36 36" aria-hidden="true">
           <circle class="track" cx="18" cy="18" r="14" pathLength="100"></circle>
@@ -40,14 +42,6 @@
     </div>
   </div>
 </header>
-{% endmacro %}
-
-{% macro query_switch() %}
-<label class="query-switch">
-  <input id="controller-query" type="checkbox" checked />
-  <span class="switch" aria-hidden="true"></span>
-  Read controller
-</label>
 {% endmacro %}
 
 {% macro pill(id, text) %}
