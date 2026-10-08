@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 
 from app.config import get_settings
 from app.database import add_sample, count_samples, session_scope, utcnow
+from app.pump_info import build_sections
 from app.settings_catalog import (
     SETTINGS,
     format_value,
@@ -406,6 +407,11 @@ class SettingsWriteError(Exception):
 def read_settings(host: str, port: int) -> list[dict]:
     """Read the four household settings. Does not write."""
     return _with_pump(host, port, _read_allowed)
+
+
+def read_pump_info(host: str, port: int) -> dict:
+    """Read the information page. Does not write."""
+    return {"demo": False, "sections": _with_pump(host, port, build_sections)}
 
 
 def write_setting(host: str, port: int, setting_id: str, value) -> dict:

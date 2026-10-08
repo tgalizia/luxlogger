@@ -6,6 +6,8 @@ const fields = {
   findings: document.querySelector("#findings"),
 };
 
+const pumpTable = mountPumpTable(document.querySelector("#pump-table"), { editable: false });
+
 const adviceButton = document.querySelector("#advice-button");
 const adviceNote = document.querySelector("#advice-note");
 let advicePending = false;
@@ -234,6 +236,7 @@ suggestButton.addEventListener("click", async () => {
       return;
     }
     currentSettings = body.settings || [];
+    pumpTable.setSettings(currentSettings);
     proposed = body.changes || [];
     changesStatus.textContent = proposed.length
       ? "Review each suggestion. Nothing is sent until you confirm it."
@@ -279,6 +282,7 @@ confirmOk.addEventListener("click", async () => {
     currentSettings = currentSettings.map((setting) =>
       setting.id === payload.setting.id ? payload.setting : setting,
     );
+    pumpTable.updateSetting(payload.setting);
     proposed = proposed.filter((change) => change.id !== payload.setting.id);
     changesStatus.textContent = payload.changed
       ? `${payload.setting.label} is now ${payload.setting.display}.`
@@ -296,6 +300,12 @@ confirmOk.addEventListener("click", async () => {
 
 window.addEventListener("controller-tick", () => {
   loadLatest();
+  pumpTable.load();
 });
 
+window.addEventListener("controller-polling", (event) => {
+  if (event.detail && event.detail.polling !== false) pumpTable.load();
+});
+
+pumpTable.load();
 loadLatest();

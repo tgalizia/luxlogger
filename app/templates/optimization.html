@@ -4,7 +4,8 @@
 {% block title %}AI Optimization{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="/static/optimization.css?v=6" />
+<link rel="stylesheet" href="/static/pump_table.css?v=6" />
+<link rel="stylesheet" href="/static/optimization.css?v=8" />
 {% endblock %}
 
 {% block body %}
@@ -37,6 +38,10 @@
   <p id="changes-status"></p>
   <div id="changes"></div>
 </section>
+<section class="pump-info" aria-labelledby="pump-info-title">
+  <h2 id="pump-info-title">Pump information</h2>
+  <div id="pump-table"></div>
+</section>
 <dialog id="confirm-dialog">
   <h2>Confirm change</h2>
   <p id="confirm-text"></p>
@@ -48,5 +53,6 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/optimization.js?v=3"></script>
+<script src="/static/pump_table.js?v=4"></script>
+<script src="/static/optimization.js?v=4"></script>
 {% endblock %}

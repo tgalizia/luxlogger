@@ -45,9 +45,11 @@ from app.luxtronik_client import (
     poll_once,
     poll_state,
     read_controller_identity,
+    read_pump_info,
     read_settings,
     write_setting,
 )
+from app.pump_info import sections_from_sample
 from app.runtime import PreferenceError, app_settings_payload, controller_endpoint, effective_runtime, save_app_settings
 from app.settings_catalog import SettingsError, validate_value
 
@@ -405,6 +407,24 @@ def _diagnostics(session: Session, settings) -> dict:
     )
     findings["window_hours"] = settings.advice_window_hours
     return findings
+
+
+@app.get("/api/pump-info")
+def pump_info(session: Session = Depends(get_db)):
+    try:
+        ensure_polling()
+    except QueriesPaused as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    settings = get_settings()
+    if settings.demo_mode:
+        latest = latest_sample(session)
+        sample = None if latest is None else sample_to_dict(latest)
+        return {"demo": True, "sections": sections_from_sample(sample)}
+    _settings, host, port = _controller(session)
+    try:
+        return read_pump_info(host, port)
+    except (OSError, TimeoutError) as exc:
+        raise HTTPException(status_code=503, detail=f"Could not reach the controller: {exc}") from exc
 
 
 @app.get("/api/settings")

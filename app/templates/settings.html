@@ -4,7 +4,8 @@
 {% block title %}Heat pump settings{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="/static/settings.css?v=6" />
+<link rel="stylesheet" href="/static/pump_table.css?v=6" />
+<link rel="stylesheet" href="/static/settings.css?v=8" />
 {% endblock %}
 
 {% block body %}
@@ -12,8 +13,7 @@
   {{ ui.header_copy("Heat pump settings", "A change is sent only after you confirm that one setting.") }}
 </header>
 <p id="status">Loading the current values.</p>
-<section id="modes"></section>
-<section id="rows"></section>
+<div id="pump-table"></div>
 <dialog id="confirm-dialog">
   <h2>Confirm change</h2>
   <p id="confirm-text"></p>
@@ -25,5 +25,6 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/settings.js?v=12"></script>
+<script src="/static/pump_table.js?v=4"></script>
+<script src="/static/settings.js?v=14"></script>
 {% endblock %}

@@ -1,0 +1,59 @@
+.pump-note { margin: 0 0 12px; }
+.pump-sections {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 0 16px;
+}
+.pump-section { grid-column: span 3; }
+.pump-settings { grid-column: 1 / span 4; grid-row: 1; }
+.pump-system { grid-column: 5 / span 4; grid-row: 1; }
+.pump-errors { grid-column: 9 / span 4; grid-row: 1; }
+.pump-section h2 { margin: 0 0 8px; font-size: 1rem; }
+.pump-section table { width: 100%; border-collapse: collapse; }
+.pump-section th {
+  width: 46%;
+  padding: 7px 12px 7px 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 500;
+  text-align: left;
+  vertical-align: middle;
+}
+.pump-section td {
+  padding: 7px 0;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  vertical-align: middle;
+}
+.pump-section tr + tr th,
+.pump-section tr + tr td { border-top: 1px solid var(--line); }
+.pump-error-table { table-layout: fixed; }
+.pump-error-table th,
+.pump-error-table td {
+  width: auto;
+  text-align: left;
+  padding: 7px 12px 7px 0;
+}
+.pump-error-table thead th {
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--line);
+}
+.pump-error-table th:nth-child(1),
+.pump-error-table td:nth-child(1) { width: 42%; }
+.pump-error-table th:nth-child(2),
+.pump-error-table td:nth-child(2) { width: 3.25rem; white-space: nowrap; }
+.pump-control {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+.pump-control select { min-width: 0; max-width: 16rem; flex: 1; }
+.pump-control button { flex: none; }
+@media (max-width: 700px) {
+  .pump-sections { grid-template-columns: 1fr; }
+  .pump-section { grid-column: auto; grid-row: auto; }
+  .pump-control { flex-wrap: wrap; }
+}

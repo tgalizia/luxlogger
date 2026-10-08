@@ -39,6 +39,12 @@ button:disabled { opacity: 0.6; cursor: wait; }
 }
 .advice-actions button { margin-top: 0; flex: 1; }
 #setting-changes { margin-top: 16px; }
+.pump-info {
+  margin-top: 40px;
+  padding-top: 28px;
+  border-top: 1px solid var(--line);
+}
+.pump-info > h2 { font-size: 1.35rem; margin: 0 0 16px; }
 #setting-changes h2 { margin-bottom: 8px; }
 .change {
   display: flex;
