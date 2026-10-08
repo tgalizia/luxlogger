@@ -169,7 +169,6 @@ const seriesColors = {
 
 const HEATING_SCALE = { min: 18, max: 28 };
 const HOT_WATER_SCALE = { min: 38, max: 48 };
-const OUTDOOR_SCALE = { min: 5, max: 20 };
 const MIN_TEMP_SPAN = 4;
 
 function hotWaterCircuit(sample) {
@@ -286,15 +285,13 @@ function temperatureBounds(datasets) {
 }
 
 function degreeScale(scale, position, title) {
-  const axis = {
+  return {
     position,
     min: scale.min,
     max: scale.max,
     title: { display: true, text: title },
     ticks: { maxTicksLimit: 8 },
   };
-  if (position === "right") axis.grid = { drawOnChartArea: false };
-  return axis;
 }
 
 function chartOptions(range, window, bounds, fallback, showLegend = true) {
@@ -308,12 +305,6 @@ function chartOptions(range, window, bounds, fallback, showLegend = true) {
       y: degreeScale(bounds || fallback, "left", "°C"),
     },
   };
-}
-
-function heatingChartOptions(range, window, circuitBounds, outdoorBounds) {
-  const options = chartOptions(range, window, circuitBounds, HEATING_SCALE);
-  options.scales.yOutdoor = degreeScale(outdoorBounds || OUTDOOR_SCALE, "right", "Outdoor °C");
-  return options;
 }
 
 function extraHeaterOn(sample) {
@@ -412,7 +403,7 @@ function renderChart(samples, indoor, range, window) {
       spanGaps: true,
     },
   ];
-  const outdoor = series("Temperature Outdoor", samples, "outdoor_temp", () => true, "yOutdoor");
+  const outdoor = series("Temperature Outdoor", samples, "outdoor_temp");
   const heating = withHidden([...circuit, outdoor], heatingHidden);
   const hotWaterSeries = [series("Hot water", samples, "dhw_temp")];
   const hotWaterHidden = hiddenLabels(hotWaterChart);
@@ -429,12 +420,7 @@ function renderChart(samples, indoor, range, window) {
     heatingChart,
     document.querySelector("#chart"),
     heating,
-    heatingChartOptions(
-      range,
-      window,
-      temperatureBounds(shown(circuit, heatingHidden)),
-      temperatureBounds(shown([outdoor], heatingHidden)),
-    ),
+    chartOptions(range, window, temperatureBounds(shown(heating, heatingHidden)), HEATING_SCALE),
   );
   hotWaterChart = upsertChart(
     hotWaterChart,
