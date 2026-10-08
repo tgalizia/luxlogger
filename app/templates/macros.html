@@ -14,22 +14,36 @@
 {% endmacro %}
 
 {% macro toolbar(refresh_seconds, active="") %}
+{% set page_meta = {
+  "dashboard": ("fa-solid fa-house", "Dashboard"),
+  "optimization": ("fa-solid fa-lightbulb", "AI Optimization"),
+  "settings": ("fa-solid fa-fan", "Pump settings"),
+  "app": ("fa-solid fa-gear", "App settings"),
+} %}
+{% set current_icon, current_label = page_meta.get(active, ("fa-solid fa-bars", "Menu")) %}
 <header class="toolbar">
   <div class="toolbar-inner">
-    <nav class="toolbar-nav" aria-label="Pages">
-      {% call toolbar_link("/", "dashboard", "Dashboard", active) %}
-      <i class="fa-solid fa-house" aria-hidden="true"></i>
-      {% endcall %}
-      {% call toolbar_link("/optimization", "optimization", "AI Optimization", active) %}
-      <i class="fa-solid fa-lightbulb" aria-hidden="true"></i>
-      {% endcall %}
-      {% call toolbar_link("/settings", "settings", "Pump settings", active) %}
-      <i class="fa-solid fa-fan" aria-hidden="true"></i>
-      {% endcall %}
-      {% call toolbar_link("/app-settings", "app", "App settings", active) %}
-      <i class="fa-solid fa-gear" aria-hidden="true"></i>
-      {% endcall %}
-    </nav>
+    <div class="toolbar-nav">
+      <button type="button" class="toolbar-menu" aria-expanded="false" aria-controls="page-menu">
+        <i class="{{ current_icon }}" aria-hidden="true"></i>
+        <span>{{ current_label }}</span>
+        <i class="fa-solid fa-chevron-down toolbar-menu-caret" aria-hidden="true"></i>
+      </button>
+      <nav class="toolbar-links" id="page-menu" aria-label="Pages">
+        {% call toolbar_link("/", "dashboard", "Dashboard", active) %}
+        <i class="fa-solid fa-house" aria-hidden="true"></i>
+        {% endcall %}
+        {% call toolbar_link("/optimization", "optimization", "AI Optimization", active) %}
+        <i class="fa-solid fa-lightbulb" aria-hidden="true"></i>
+        {% endcall %}
+        {% call toolbar_link("/settings", "settings", "Pump settings", active) %}
+        <i class="fa-solid fa-fan" aria-hidden="true"></i>
+        {% endcall %}
+        {% call toolbar_link("/app-settings", "app", "App settings", active) %}
+        <i class="fa-solid fa-gear" aria-hidden="true"></i>
+        {% endcall %}
+      </nav>
+    </div>
     <div class="toolbar-status">
       <div id="refresh-gauge" class="refresh-gauge" data-refresh-seconds="{{ refresh_seconds }}" title="Seconds until the next controller read" aria-label="Next read in {{ refresh_seconds }} seconds">
         <svg viewBox="0 0 36 36" aria-hidden="true">

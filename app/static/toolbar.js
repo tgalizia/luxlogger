@@ -145,6 +145,24 @@ pollingInput?.addEventListener("change", async () => {
   }
 });
 
+const pageNav = document.querySelector(".toolbar-nav");
+const pageMenuButton = document.querySelector(".toolbar-menu");
+function setPageMenu(open) {
+  if (!pageNav || !pageMenuButton) return;
+  pageNav.classList.toggle("is-open", open);
+  pageMenuButton.setAttribute("aria-expanded", open ? "true" : "false");
+}
+pageMenuButton?.addEventListener("click", () => {
+  setPageMenu(!pageNav.classList.contains("is-open"));
+});
+document.addEventListener("click", (event) => {
+  if (!pageNav?.classList.contains("is-open") || pageNav.contains(event.target)) return;
+  setPageMenu(false);
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") setPageMenu(false);
+});
+
 fetchStatus().finally(arm);
 setInterval(paintGauge, 100);
 })();

@@ -45,7 +45,9 @@ a { color: var(--accent); font-weight: 600; }
   justify-content: space-between;
   gap: 16px 24px;
 }
-.toolbar-nav {
+.toolbar-nav { position: relative; min-width: 0; }
+.toolbar-menu { display: none; }
+.toolbar-links {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
@@ -166,8 +168,59 @@ a { color: var(--accent); font-weight: 600; }
   font-variant-numeric: tabular-nums;
 }
 @media (max-width: 800px) {
-  .toolbar-inner { align-items: flex-start; flex-wrap: wrap; }
-  .toolbar-status { width: 100%; }
+  .toolbar-inner { align-items: center; flex-wrap: wrap; }
+  .toolbar-nav { flex: 1 1 auto; }
+  .toolbar-menu {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 100%;
+    padding: 8px 12px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--card);
+    color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--line);
+    font: inherit;
+    font-size: 0.92rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .toolbar-menu span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .toolbar-menu:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .toolbar-menu-caret {
+    font-size: 0.7rem;
+    transition: transform 0.15s ease;
+  }
+  .toolbar-nav.is-open .toolbar-menu-caret { transform: rotate(180deg); }
+  .toolbar-nav:not(.is-open) .toolbar-links { display: none; }
+  .toolbar-nav.is-open .toolbar-links {
+    display: flex;
+    position: absolute;
+    z-index: 30;
+    top: calc(100% + 8px);
+    left: 0;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 2px;
+    width: max-content;
+    min-width: 220px;
+    max-width: calc(100vw - 40px);
+    padding: 6px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: 0 12px 32px rgba(28, 25, 23, 0.12);
+  }
+  .toolbar-nav.is-open .toolbar-links .toolbar-item { border-radius: 10px; }
+  .toolbar-status { width: auto; }
 }
 .card {
   background: var(--card);
