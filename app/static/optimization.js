@@ -361,7 +361,6 @@ adviceButton.addEventListener("click", async () => {
 });
 
 const suggestButton = document.querySelector("#suggest-button");
-const changesSection = document.querySelector("#setting-changes");
 const changesEl = document.querySelector("#changes");
 const changesStatus = document.querySelector("#changes-status");
 const dialog = document.querySelector("#confirm-dialog");
@@ -395,7 +394,6 @@ function displayValue(setting, value) {
 }
 
 function renderChanges() {
-  changesSection.hidden = false;
   changesEl.replaceChildren();
   const byId = Object.fromEntries(currentSettings.map((setting) => [setting.id, setting]));
   for (const change of proposed) {
@@ -438,21 +436,15 @@ function openConfirm(setting, nextValue, from, to) {
 suggestButton.addEventListener("click", async () => {
   const query = analysisQuery();
   if (!query) {
-    changesSection.hidden = false;
     changesEl.replaceChildren();
     changesStatus.textContent = "Choose a start date and an end date after it.";
     return;
   }
   suggestButton.disabled = true;
-  changesSection.hidden = false;
   changesEl.replaceChildren();
   changesStatus.textContent = `Looking at ${periodPhrase()}…`;
   try {
-    const response = await fetch(`/api/settings/suggest?${query}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ note: adviceNote.value }),
-    });
+    const response = await fetch(`/api/settings/suggest?${query}`, { method: "POST" });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
       changesStatus.textContent = detailMessage(body);

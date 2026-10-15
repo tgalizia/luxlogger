@@ -5,7 +5,7 @@
 
 {% block head %}
 <link rel="stylesheet" href="/static/pump_table.css?v=6" />
-<link rel="stylesheet" href="/static/optimization.css?v=10" />
+<link rel="stylesheet" href="/static/optimization.css?v=11" />
 {% endblock %}
 
 {% block body %}
@@ -34,7 +34,7 @@
     </div>
   </div>
   <div id="findings" aria-live="polite"></div>
-  <p class="data-note">Ask advisor and Suggest from history send these figures, not every stored reading.</p>
+  <p class="data-note">Ask advisor and Suggest settings both use these figures, not every stored reading.</p>
 </section>
 <div class="advice-row">
   {% call ui.card("section") %}
@@ -45,22 +45,30 @@
   </label>
   <div class="advice-actions">
     <button id="advice-button" type="button">Ask advisor</button>
-    <button id="suggest-button" type="button">Suggest from history</button>
   </div>
   {% endcall %}
   {% call ui.card("section") %}
-  <h2>AI Suggestions</h2>
+  <h2>Advisor Suggestions</h2>
   <div id="advice-body">
     <p class="advice-status">Ask for a suggestion after a few samples have been stored.</p>
   </div>
   <p id="advice-meta" hidden></p>
   {% endcall %}
 </div>
-<section id="setting-changes" class="card" hidden>
+<div class="advice-row">
+  {% call ui.card("section") %}
+  <h2>Suggest settings</h2>
+  <p class="settings-copy">Propose changes to heating mode, hot water mode, hot water temperature, and the heating setpoint from the selected period.</p>
+  <div class="advice-actions">
+    <button id="suggest-button" type="button">Suggest settings</button>
+  </div>
+  {% endcall %}
+  {% call ui.card("section", id="setting-changes") %}
   <h2>Setting changes</h2>
-  <p id="changes-status"></p>
+  <p id="changes-status">Suggest settings after a few samples have been stored.</p>
   <div id="changes"></div>
-</section>
+  {% endcall %}
+</div>
 <section class="pump-info" aria-labelledby="pump-info-title">
   <h2 id="pump-info-title">Pump information</h2>
   <div id="pump-table"></div>
@@ -77,5 +85,5 @@
 
 {% block scripts %}
 <script src="/static/pump_table.js?v=4"></script>
-<script src="/static/optimization.js?v=6"></script>
+<script src="/static/optimization.js?v=7"></script>
 {% endblock %}

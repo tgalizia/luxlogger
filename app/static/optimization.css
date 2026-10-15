@@ -41,7 +41,8 @@ button:disabled { opacity: 0.6; cursor: wait; }
   padding-top: 12px;
 }
 .advice-actions button { margin-top: 0; flex: 1; }
-#setting-changes { margin-top: 16px; }
+.advice-row + .advice-row { margin-top: 16px; }
+.settings-copy { line-height: 1.55; }
 .pump-info {
   margin-top: 40px;
   padding-top: 28px;
