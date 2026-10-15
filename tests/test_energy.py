@@ -1,6 +1,6 @@
 """Heat-meter deltas and the priced energy response. These tests do not open a socket."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -29,6 +29,38 @@ def test_delivered_heat_sums_a_steady_rise():
         _sample(heat_heating_kwh=12.0),
     ]
     assert delivered_kwh(samples, "heat_heating_kwh") == 2.0
+
+
+def test_small_backward_steps_are_not_meter_resets():
+    samples = [
+        _sample(heat_heating_kwh=186520.7),
+        _sample(heat_heating_kwh=186599.9),
+        _sample(heat_heating_kwh=186599.3),
+        _sample(heat_heating_kwh=186612.0),
+        _sample(heat_heating_kwh=186611.8),
+        _sample(heat_heating_kwh=186666.8),
+    ]
+    assert delivered_kwh(samples, "heat_heating_kwh") == 146.1
+    assert cumulative_kwh(samples, "heat_heating_kwh")[-1] == 146.1
+
+
+def test_a_dip_that_returns_to_the_counter_is_ignored():
+    samples = [
+        _sample(heat_heating_kwh=186666.0),
+        _sample(heat_heating_kwh=0),
+        _sample(heat_heating_kwh=186670.0),
+    ]
+    assert delivered_kwh(samples, "heat_heating_kwh") == 4.0
+
+
+def test_a_reading_above_the_heat_pump_rate_is_ignored():
+    start = datetime(2026, 10, 12, tzinfo=timezone.utc)
+    samples = [
+        _sample(heat_heating_kwh=100, recorded_at=start),
+        _sample(heat_heating_kwh=559982.5, recorded_at=start + timedelta(minutes=5)),
+        _sample(heat_heating_kwh=110, recorded_at=start + timedelta(minutes=10)),
+    ]
+    assert delivered_kwh(samples, "heat_heating_kwh") == 10.0
 
 
 def test_delivered_heat_restarts_after_a_reset():

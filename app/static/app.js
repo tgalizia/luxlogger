@@ -449,18 +449,48 @@ function energyChartOptions(range, window, datasets) {
   };
 }
 
+const MAX_HEAT_KW = 100;
+const NOISE_KWH = 1;
+
+function hoursBetween(start, end) {
+  const earlier = Date.parse(start);
+  const later = Date.parse(end);
+  if (Number.isNaN(earlier) || Number.isNaN(later) || later < earlier) return null;
+  return (later - earlier) / 3600000;
+}
+
 function cumulativeHeat(samples, key) {
+  const points = samples.filter((sample) => !missing(sample[key]));
   const data = [];
   let total = 0;
   let previous = null;
-  for (const sample of samples) {
-    if (missing(sample[key])) continue;
+  let previousAt = null;
+  for (let index = 0; index < points.length; index += 1) {
+    const sample = points[index];
     const value = Number(sample[key]);
-    if (previous !== null) {
-      total += value + 1e-6 >= previous ? value - previous : value;
+    if (previous === null) {
+      previous = value;
+      previousAt = sample.recorded_at;
+    } else {
+      const later = points.slice(index + 1).map((item) => Number(item[key]));
+      const hours = hoursBetween(previousAt, sample.recorded_at);
+      const limit = hours === null ? null : Math.max(NOISE_KWH, MAX_HEAT_KW * hours);
+      if (value + 1e-6 >= previous) {
+        const delta = value - previous;
+        if (limit === null || delta <= limit + 1e-6) {
+          total += delta;
+          previous = value;
+          previousAt = sample.recorded_at;
+        }
+      } else if (previous - value <= NOISE_KWH + 1e-6 || later.some((item) => item + 1e-6 >= previous)) {
+        // A tenth of a kWh backward, or a dip that climbs back, is not a reset.
+      } else {
+        if (limit === null || value <= limit + 1e-6) total += value;
+        previous = value;
+        previousAt = sample.recorded_at;
+      }
     }
     data.push({ x: sample.recorded_at, y: Math.round(total * 10) / 10 });
-    previous = value;
   }
   return data;
 }
@@ -599,10 +629,10 @@ function renderChart(samples, indoor, range, window) {
   );
 }
 
-function formatPrice(value, currency) {
+function formatPrice(value, currency, digits = 2) {
   const text = new Intl.NumberFormat(DISPLAY_LOCALE, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: Math.min(2, digits),
+    maximumFractionDigits: digits,
     useGrouping: true,
   }).format(Number(value));
   return `${text} ${currency}`;
@@ -668,7 +698,7 @@ function renderEnergy(payload) {
       document.createTextNode(" to see the cost of this range."),
     );
   } else {
-    text(fields.energyNote, `Using ${formatPrice(payload.price_per_kwh, currency)} per kWh for this range.`);
+    text(fields.energyNote, `Using ${formatPrice(payload.price_per_kwh, currency, 4)} per kWh for this range.`);
   }
   renderEnergyBlock(
     fields.energyPeriod,

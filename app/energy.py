@@ -1,6 +1,7 @@
 """Heat-meter deltas and the cost of heat delivered in a selected range."""
 
 import re
+from datetime import datetime
 
 CHANNELS = (
     ("heating", "Heating", "heat_heating_kwh"),
@@ -9,6 +10,10 @@ CHANNELS = (
 )
 
 MAX_PRICE_PER_KWH = 100
+# A household heat pump cannot deliver more than this between two readings.
+MAX_HEAT_KW = 100
+# A step backward of at most this much is meter noise, not a reset.
+NOISE_KWH = 1.0
 _EUROPEAN_PRICE = re.compile(r"^\d{1,3},\d{2}$")
 
 
@@ -38,49 +43,85 @@ def validate_currency(value) -> str:
     return text
 
 
-def _counter_values(samples, attr: str) -> list[float]:
-    values = []
+def _elapsed_hours(earlier, later) -> float | None:
+    start = getattr(earlier, "recorded_at", None)
+    end = getattr(later, "recorded_at", None)
+    if not isinstance(start, datetime) or not isinstance(end, datetime):
+        return None
+    if (start.tzinfo is None) != (end.tzinfo is None):
+        return None
+    seconds = (end - start).total_seconds()
+    if seconds < 0:
+        return None
+    return seconds / 3600
+
+
+def _step_limit(earlier, later) -> float | None:
+    """Most heat a house can deliver since the previous accepted reading."""
+    hours = _elapsed_hours(earlier, later)
+    if hours is None:
+        return None
+    return max(NOISE_KWH, MAX_HEAT_KW * hours)
+
+
+def _backward_noise(previous: float, value: float) -> bool:
+    return previous - value <= NOISE_KWH + 1e-6
+
+
+def _recovers(baseline: float, later: list[float]) -> bool:
+    """True when a later reading climbs back to the counter from before a dip."""
+    return any(value + 1e-6 >= baseline for value in later)
+
+
+def _readings(samples, attr: str) -> list[tuple]:
+    readings = []
     for sample in samples:
         value = getattr(sample, attr, None)
         if value is None:
             continue
-        values.append(float(value))
-    return values
+        readings.append((sample, float(value)))
+    return readings
 
 
-def _added_kwh(previous: float, value: float) -> float:
-    """Increase since the previous reading. A drop restarts from the new reading."""
-    if value + 1e-6 >= previous:
-        return value - previous
-    return value
+def _cumulative(samples, attr: str) -> list[float]:
+    """Running heat from the first reading. Noise and one-off glitches are skipped."""
+    readings = _readings(samples, attr)
+    if not readings:
+        return []
+    total = 0.0
+    series = [0.0]
+    prev_sample, prev = readings[0]
+    for index, (sample, value) in enumerate(readings[1:], start=1):
+        later = [item for _, item in readings[index + 1 :]]
+        limit = _step_limit(prev_sample, sample)
+        if value + 1e-6 >= prev:
+            delta = value - prev
+            if limit is None or delta <= limit + 1e-6:
+                total += delta
+                prev_sample, prev = sample, value
+        elif _backward_noise(prev, value) or _recovers(prev, later):
+            pass
+        else:
+            # The counter restarted and stayed down. Count heat since zero
+            # only when that reading could have been produced in the gap.
+            if limit is None or value <= limit + 1e-6:
+                total += value
+            prev_sample, prev = sample, value
+        series.append(round(total, 1))
+    return series
 
 
 def delivered_kwh(samples, attr: str) -> float | None:
-    """Sum increases of one cumulative counter. A drop restarts from the new reading."""
-    values = _counter_values(samples, attr)
-    if len(values) < 2:
+    """Heat added by one cumulative counter. A small dip is not a reset."""
+    if len(_readings(samples, attr)) < 2:
         return None
-    total = 0.0
-    previous = values[0]
-    for value in values[1:]:
-        total += _added_kwh(previous, value)
-        previous = value
-    return round(total, 1)
+    series = _cumulative(samples, attr)
+    return series[-1]
 
 
 def cumulative_kwh(samples, attr: str) -> list[float]:
     """Running heat delivered from the first reading in the window."""
-    values = _counter_values(samples, attr)
-    if not values:
-        return []
-    total = 0.0
-    previous = values[0]
-    points = [0.0]
-    for value in values[1:]:
-        total += _added_kwh(previous, value)
-        points.append(round(total, 1))
-        previous = value
-    return points
+    return _cumulative(samples, attr)
 
 
 def energy_report(samples, latest, price: float | None, currency: str, since_iso: str | None) -> dict:
