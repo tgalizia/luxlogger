@@ -21,6 +21,15 @@ main {
   margin: 0 auto;
   padding: 28px 20px 48px;
 }
+.app-footer {
+  width: min(100%, 1500px);
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 0 20px 28px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
 header { margin-bottom: 24px; }
 h1 { font-size: 1.7rem; margin: 0 0 4px; }
 h2 { font-size: 1.05rem; margin: 0 0 12px; }

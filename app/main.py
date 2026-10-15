@@ -60,6 +60,7 @@ from app.runtime import (
     save_app_settings,
 )
 from app.settings_catalog import SettingsError, validate_value
+from app.version import APP_VERSION
 
 logger = logging.getLogger("luxtronik_advisor")
 templates = Jinja2Templates(directory=str(PROJECT_ROOT / "app" / "templates"))
@@ -172,6 +173,7 @@ def _page(request: Request, template: str, active: str):
         {
             "active": active,
             "refresh_seconds": get_settings().poll_interval_seconds,
+            "version": APP_VERSION,
         },
     )
 
@@ -230,6 +232,7 @@ def status(session: Session = Depends(get_db)):
         "latest": latest_payload,
         "indoor": None if indoor is None else indoor_to_dict(indoor),
         "indoor_source": runtime.indoor_source,
+        "version": APP_VERSION,
     }
 
 

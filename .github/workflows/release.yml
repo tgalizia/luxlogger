@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - app/VERSION
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Tag and publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(tr -d '[:space:]' < app/VERSION)
+          if [ -z "$version" ]; then
+            echo "app/VERSION is empty" >&2
+            exit 1
+          fi
+          tag="v${version}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "Tag ${tag} already exists"
+            exit 0
+          fi
+          python3 - "$version" <<'PY'
+          import sys
+          from pathlib import Path
+          version = sys.argv[1]
+          text = Path("CHANGELOG.md").read_text(encoding="utf-8")
+          marker = f"## {version}\n"
+          start = text.find(marker)
+          if start < 0:
+              raise SystemExit(f"CHANGELOG.md has no section for {version}")
+          rest = text[start + len(marker):]
+          next_heading = rest.find("\n## ")
+          body = (rest if next_heading < 0 else rest[:next_heading]).strip()
+          if not body:
+              raise SystemExit(f"CHANGELOG.md section {version} is empty")
+          Path("release-notes.md").write_text(body + "\n", encoding="utf-8")
+          PY
+          gh release create "$tag" \
+            --target "${GITHUB_SHA}" \
+            --title "$tag" \
+            --notes-file release-notes.md
