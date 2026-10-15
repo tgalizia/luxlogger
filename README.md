@@ -60,6 +60,58 @@ The advisor follows two prompts, both edited on **App settings** and stored in t
 
 Either box can be rewritten. A prompt cannot be empty and must stay within 8,000 characters. **Restore default prompts** puts the built-in text back into the form. Save afterwards, or the previous text stays in use. Changing a prompt does not require a restart.
 
+### Bots on the network
+
+A bot that runs on the same network, such as Grok in Cursor or Gemini CLI, can read the stored measurements and check a suggested change. The tools speak the [Model Context Protocol](https://modelcontextprotocol.io). The bot does the reading and the judging. Luxlogger does not call another model for it.
+
+The tools are `pump_status`, `behavior`, `energy`, `household_settings`, and `check_changes`. `behavior` and `energy` take `hours` from 1 to 168, or an ISO `since` and `until`. They return the same summaries as the dashboard, not the raw samples. `check_changes` accepts a proposal for heating mode, hot water mode, hot water temperature, or the heating setpoint, and returns what would be kept. It does not write. A change is still sent only from **Pump settings**, after you confirm that one setting.
+
+Two ways to attach the bot:
+
+- On the machine that holds the database, Cursor can start the tools over stdio. In `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "luxlogger": {
+      "command": "/opt/luxlogger/.venv/bin/python",
+      "args": ["-m", "app.mcp_server"],
+      "cwd": "/opt/luxlogger"
+    }
+  }
+}
+```
+
+Use the path of this checkout instead of `/opt/luxlogger` when the logger is not on the Pi.
+
+- From another computer on the LAN, point the bot at the logger. The tools are on the same address as the dashboard, at `/mcp`. Cursor:
+
+```json
+{
+  "mcpServers": {
+    "luxlogger": {
+      "url": "http://luxlogger.local/mcp"
+    }
+  }
+}
+```
+
+Gemini CLI uses `~/.gemini/settings.json` and names the address `httpUrl`:
+
+```json
+{
+  "mcpServers": {
+    "luxlogger": {
+      "httpUrl": "http://luxlogger.local/mcp"
+    }
+  }
+}
+```
+
+With `uvicorn` on a laptop the address is `http://127.0.0.1:8000/mcp`. With Docker Compose it is `http://127.0.0.1:8001/mcp`.
+
+Anyone on the LAN who can open the dashboard can call these tools. That is the same trust as the pages. The tools cannot write to the controller. Do not forward the port.
+
 ### Controller port
 
 The controller speaks its own TCP protocol, separate from its web login.
@@ -253,7 +305,7 @@ http://luxlogger.local
 
 or `http://<pi-address>`. The dashboard should show a connection line after the first successful read. Samples accumulate in `/opt/luxlogger/data/luxtronik_data.db`.
 
-Leave the Pi on the local network. Do not forward port 80 (or 8000) from the router. There is no authentication.
+Leave the Pi on the local network. Do not forward port 80 (or 8000) from the router. There is no authentication. The same rule covers `/mcp`: a bot on the LAN can use it, and it should not be published.
 
 Updates are a pull and a restart:
 
@@ -283,6 +335,7 @@ A push to `main` can do that automatically when a self-hosted GitHub Actions run
 - `POST /api/app-settings/equipment` — fill the pump model and software version from the controller
 - `POST /api/polling` — `{ "enabled": false }` pauses controller reads
 - `GET /api/settings`, `POST /api/settings/apply` — read controller values, and confirm one change
+- MCP at `/mcp` — read-only tools for a bot on the LAN. See [Bots on the network](#bots-on-the-network)
 
 ## Tests
 
@@ -309,6 +362,7 @@ Luxlogger is MIT. It also uses these public libraries. Each one keeps its own li
 | [OpenAI Python library](https://github.com/openai/openai-python) | Advisor | Apache-2.0, OpenAI |
 | [Google Gen AI SDK](https://github.com/googleapis/python-genai) | Advisor | Apache-2.0, Google |
 | [Anthropic Python SDK](https://github.com/anthropics/anthropic-sdk-python) | Advisor | MIT, Anthropic |
+| [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk) | Tools a bot on the LAN can call | MIT, Model Context Protocol a Series of LF Projects, LLC. |
 | [pytest](https://github.com/pytest-dev/pytest) | Tests | MIT, pytest-dev |
 | [Chart.js](https://www.chartjs.org/) 4.4.6 | Dashboard chart | MIT, Chart.js Contributors |
 | [chartjs-adapter-date-fns](https://github.com/chartjs/chartjs-adapter-date-fns) 3.0.0 | Time axis on that chart. The bundle includes [date-fns](https://github.com/date-fns/date-fns), also MIT | MIT, Chart.js Contributors and date-fns |

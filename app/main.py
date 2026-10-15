@@ -59,12 +59,14 @@ from app.runtime import (
     record_shelly_reading,
     save_app_settings,
 )
+from app.mcp_server import http_app as mcp_http_app
 from app.settings_catalog import SettingsError, validate_value
 from app.version import APP_VERSION
 
 logger = logging.getLogger("luxtronik_advisor")
 templates = Jinja2Templates(directory=str(PROJECT_ROOT / "app" / "templates"))
 _poll_wake: asyncio.Event | None = None
+_mcp_http = mcp_http_app()
 
 
 @asynccontextmanager
@@ -81,7 +83,8 @@ async def lifespan(_app: FastAPI):
     await asyncio.to_thread(poll_once)
     task = asyncio.create_task(_poll_loop(stop, wake))
     try:
-        yield
+        async with _mcp_http.router.lifespan_context(_mcp_http):
+            yield
     finally:
         _poll_wake = None
         stop.set()
@@ -93,6 +96,10 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="Luxtronik AI Advisor", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(PROJECT_ROOT / "app" / "static")), name="static")
+# A mount at /mcp redirects /mcp to /mcp/. Bots post to the path without a slash.
+_mcp_asgi = _mcp_http.routes[0].app
+app.add_route("/mcp", _mcp_asgi, include_in_schema=False)
+app.add_route("/mcp/", _mcp_asgi, include_in_schema=False)
 
 
 class IndoorIn(BaseModel):

@@ -7,4 +7,5 @@ luxtronik==0.3.14
 openai>=1.40
 google-genai>=1.0
 anthropic>=0.39
+mcp>=2
 pytest>=8.0
