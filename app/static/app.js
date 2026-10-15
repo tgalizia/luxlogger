@@ -2,13 +2,31 @@ const statusUrl = "/api/status";
 const indoorUrl = "/api/indoor";
 
 const RANGES = {
-  hour: { unit: "minute", empty: "No samples in the last hour yet." },
-  day: { unit: "hour", empty: "No samples in the last 24 hours yet." },
-  week: { unit: "day", empty: "No samples this week yet." },
-  month: { unit: "day", empty: "No samples this month yet." },
-  year: { unit: "month", empty: "No samples this year yet." },
+  hour: { unit: "minute" },
+  day: { unit: "hour" },
+  week: { unit: "day" },
+  month: { unit: "day" },
+  year: { unit: "month" },
 };
+const RANGE_LABELS = {
+  current: {
+    hour: "Last hour",
+    day: "Last 24 hours",
+    week: "This week",
+    month: "This month",
+    year: "This year",
+  },
+  past: {
+    hour: "Previous hour",
+    day: "Previous 24 hours",
+    week: "Last week",
+    month: "Last month",
+    year: "Last year",
+  },
+};
+let chartPeriod = "current";
 let chartRange = "day";
+let lastPreset = "day";
 
 const fields = {
   connectionDetail: document.querySelector("#connection-detail"),
@@ -22,6 +40,7 @@ const fields = {
   compressor: document.querySelector("#compressor"),
   heater: document.querySelector("#heater"),
   chartMessage: document.querySelector("#chart-message"),
+  energyTitle: document.querySelector("#energy-title"),
   energyNote: document.querySelector("#energy-note"),
   energyPeriod: document.querySelector("#energy-period"),
   energyMeter: document.querySelector("#energy-meter"),
@@ -32,6 +51,7 @@ const indoorForm = document.querySelector("#indoor-form");
 let heatingChart;
 let hotWaterChart;
 let devicesChart;
+let energyChart;
 
 function text(node, value) {
   node.textContent = value;
@@ -240,7 +260,7 @@ function withHidden(datasets, hidden) {
   return datasets;
 }
 
-function chartWindow(range) {
+function chartWindow(period, range) {
   const end = new Date();
   const start = new Date(end);
   if (range === "hour") start.setTime(end.getTime() - 60 * 60 * 1000);
@@ -255,15 +275,86 @@ function chartWindow(range) {
     start.setMonth(0, 1);
     start.setHours(0, 0, 0, 0);
   } else start.setTime(end.getTime() - 24 * 60 * 60 * 1000);
+  if (period !== "past") return { start, end };
+  const pastEnd = new Date(start);
+  const pastStart = new Date(start);
+  if (range === "hour") pastStart.setTime(start.getTime() - 60 * 60 * 1000);
+  else if (range === "day") pastStart.setTime(start.getTime() - 24 * 60 * 60 * 1000);
+  else if (range === "week") pastStart.setDate(pastStart.getDate() - 7);
+  else if (range === "month") pastStart.setMonth(pastStart.getMonth() - 1);
+  else pastStart.setFullYear(pastStart.getFullYear() - 1);
+  return { start: pastStart, end: pastEnd };
+}
+
+function rangeLabel(period, range) {
+  return RANGE_LABELS[period][range];
+}
+
+function dateInputValue(date) {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function parseDateInput(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setHours(0, 0, 0, 0);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  return date;
+}
+
+function customWindow() {
+  const start = parseDateInput(document.querySelector("#range-start").value);
+  const endDay = parseDateInput(document.querySelector("#range-end").value);
+  if (!start || !endDay || endDay < start) return null;
+  const end = new Date(endDay);
+  end.setDate(end.getDate() + 1);
   return { start, end };
 }
 
-function timeAxis(range, window) {
+function formatDay(date) {
+  return new Intl.DateTimeFormat(DISPLAY_LOCALE, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+
+function windowLabel(range, period, chartWindow) {
+  if (range !== "custom") return rangeLabel(period, range);
+  if (!chartWindow) return "Custom";
+  const startText = formatDay(chartWindow.start);
+  const endText = formatDay(new Date(chartWindow.end.getTime() - 1));
+  return startText === endText ? startText : `${startText} – ${endText}`;
+}
+
+function selectedWindow() {
+  if (chartRange === "custom") return customWindow();
+  return chartWindow(chartPeriod, chartRange);
+}
+
+function rangeQuery(period, range, chartWindow) {
+  const since = `since=${encodeURIComponent(chartWindow.start.toISOString())}`;
+  if (period !== "past" && range !== "custom") return since;
+  return `${since}&until=${encodeURIComponent(chartWindow.end.toISOString())}`;
+}
+
+function axisUnit(range, chartWindow) {
+  if (RANGES[range]) return RANGES[range].unit;
+  const days = (chartWindow.end - chartWindow.start) / (24 * 60 * 60 * 1000);
+  if (days <= 2) return "hour";
+  if (days <= 62) return "day";
+  return "month";
+}
+
+function timeAxis(range, chartWindow) {
   return {
     type: "time",
-    min: window.start.toISOString(),
-    max: window.end.toISOString(),
-    time: { ...TIME_SCALE, unit: RANGES[range].unit },
+    min: chartWindow.start.toISOString(),
+    max: chartWindow.end.toISOString(),
+    time: { ...TIME_SCALE, unit: axisUnit(range, chartWindow) },
     ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8 },
   };
 }
@@ -292,6 +383,21 @@ function degreeScale(scale, position, title) {
     title: { display: true, text: title },
     ticks: { maxTicksLimit: 8 },
   };
+}
+
+function kwhScale(datasets) {
+  const values = datasets.flatMap((dataset) =>
+    dataset.data.map((point) => point.y).filter((value) => !missing(value)),
+  );
+  const high = values.length ? Math.max(...values) : 0;
+  const scale = {
+    min: 0,
+    grace: high > 0 ? "8%" : 0,
+    title: { display: true, text: "kWh" },
+    ticks: { maxTicksLimit: 8 },
+  };
+  if (high <= 0) scale.max = 1;
+  return scale;
 }
 
 function chartOptions(range, window, bounds, fallback, showLegend = true) {
@@ -327,6 +433,47 @@ function deviceSeries(label, samples, on, color, lane) {
     borderWidth: 2,
     stepped: true,
     fill: { target: { value: lane }, above: `${color}33` },
+  };
+}
+
+function energyChartOptions(range, window, datasets) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: { legend: legendOptions() },
+    scales: {
+      x: timeAxis(range, window),
+      y: kwhScale(datasets),
+    },
+  };
+}
+
+function cumulativeHeat(samples, key) {
+  const data = [];
+  let total = 0;
+  let previous = null;
+  for (const sample of samples) {
+    if (missing(sample[key])) continue;
+    const value = Number(sample[key]);
+    if (previous !== null) {
+      total += value + 1e-6 >= previous ? value - previous : value;
+    }
+    data.push({ x: sample.recorded_at, y: Math.round(total * 10) / 10 });
+    previous = value;
+  }
+  return data;
+}
+
+function heatSeries(label, samples, key, color) {
+  return {
+    label,
+    data: cumulativeHeat(samples, key),
+    borderColor: color,
+    backgroundColor: color,
+    pointRadius: 0,
+    borderWidth: 3,
+    tension: 0.2,
   };
 }
 
@@ -386,7 +533,8 @@ function renderChart(samples, indoor, range, window) {
     text(fields.chartMessage, "Chart library did not load. Temperature numbers above are still live.");
     return;
   }
-  text(fields.chartMessage, samples.length ? "" : RANGES[range].empty);
+  const label = windowLabel(range, chartPeriod, window).toLowerCase();
+  text(fields.chartMessage, samples.length ? "" : `No samples for ${label} yet.`);
   const heatingHidden = hiddenLabels(heatingChart);
   const circuit = [
     circuitSeries("Flow", samples, "flow_temp", false),
@@ -415,6 +563,14 @@ function renderChart(samples, indoor, range, window) {
     ],
     hiddenLabels(devicesChart),
   );
+  const delivered = withHidden(
+    [
+      heatSeries("Heating", samples, "heat_heating_kwh", "#c2410c"),
+      heatSeries("Hot water", samples, "heat_dhw_kwh", "#e11d48"),
+      heatSeries("Pool", samples, "heat_pool_kwh", "#0d9488"),
+    ],
+    hiddenLabels(energyChart),
+  );
   const shown = (datasets, hidden) => datasets.filter((dataset) => !hidden.has(dataset.label));
   heatingChart = upsertChart(
     heatingChart,
@@ -433,6 +589,13 @@ function renderChart(samples, indoor, range, window) {
     document.querySelector("#devices-chart"),
     devices,
     deviceChartOptions(range, window),
+  );
+  const deliveredHidden = hiddenLabels(energyChart);
+  energyChart = upsertChart(
+    energyChart,
+    document.querySelector("#energy-chart"),
+    delivered,
+    energyChartOptions(range, window, delivered.filter((dataset) => !deliveredHidden.has(dataset.label))),
   );
 }
 
@@ -505,10 +668,7 @@ function renderEnergy(payload) {
       document.createTextNode(" to see the cost of this range."),
     );
   } else {
-    text(
-      fields.energyNote,
-      `Using ${formatPrice(payload.price_per_kwh, currency)} per kWh for this range. The heat meter shows the counter totals.`,
-    );
+    text(fields.energyNote, `Using ${formatPrice(payload.price_per_kwh, currency)} per kWh for this range.`);
   }
   renderEnergyBlock(
     fields.energyPeriod,
@@ -533,13 +693,26 @@ async function refresh() {
   const generation = ++refreshGeneration;
   const pollingSeen = pollingGeneration;
   const range = chartRange;
-  const window = chartWindow(range);
-  const since = encodeURIComponent(window.start.toISOString());
+  const period = chartPeriod;
+  const window = selectedWindow();
+  text(fields.energyTitle, windowLabel(range, period, window));
+  if (!window) {
+    const statusResponse = await fetch(statusUrl);
+    if (generation !== refreshGeneration) return;
+    if (statusResponse.ok) {
+      const payload = await statusResponse.json();
+      if (pollingSeen === pollingGeneration) renderStatus(payload);
+    }
+    text(fields.chartMessage, "Choose a start date on or before the end date.");
+    text(fields.energyNote, "Choose a start date on or before the end date.");
+    return;
+  }
+  const query = rangeQuery(period, range, window);
   const [statusResponse, telemetryResponse, indoorResponse, energyResponse] = await Promise.all([
     fetch(statusUrl),
-    fetch(`/api/telemetry?since=${since}`),
-    fetch(`${indoorUrl}?since=${since}`),
-    fetch(`/api/energy?since=${since}`),
+    fetch(`/api/telemetry?${query}`),
+    fetch(`${indoorUrl}?${query}`),
+    fetch(`/api/energy?${query}`),
   ]);
   if (generation !== refreshGeneration) return;
   if (statusResponse.ok) {
@@ -592,17 +765,102 @@ indoorForm.addEventListener("submit", async (event) => {
   refresh();
 });
 
-document.querySelectorAll(".ranges button").forEach((button) => {
+function press(buttons, selected) {
+  buttons.forEach((item) => {
+    const active = item === selected;
+    item.classList.toggle("active", active);
+    item.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
+
+function seedCustomDates() {
+  const startInput = document.querySelector("#range-start");
+  const endInput = document.querySelector("#range-end");
+  if (startInput.value && endInput.value) return;
+  const current = chartWindow(chartPeriod, lastPreset);
+  startInput.value = dateInputValue(current.start);
+  const inclusiveEnd = chartPeriod === "past" ? new Date(current.end.getTime() - 1) : new Date();
+  endInput.value = dateInputValue(inclusiveEnd);
+}
+
+function setCustomOpen(open) {
+  const panel = document.querySelector(".custom-range");
+  const button = document.querySelector('[data-range="custom"]');
+  panel.hidden = !open;
+  button.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function syncRangeLabels() {
+  document.querySelectorAll("[data-range]").forEach((button) => {
+    const label = RANGE_LABELS[chartPeriod][button.dataset.range];
+    if (label) button.textContent = label;
+  });
+  text(fields.energyTitle, windowLabel(chartRange, chartPeriod, selectedWindow()));
+}
+
+document.querySelectorAll("[data-period]").forEach((button) => {
   button.addEventListener("click", () => {
-    if (!RANGES[button.dataset.range]) return;
-    chartRange = button.dataset.range;
-    document.querySelectorAll(".ranges button").forEach((item) => {
-      const active = item === button;
-      item.classList.toggle("active", active);
-      item.setAttribute("aria-pressed", active ? "true" : "false");
-    });
+    if (!RANGE_LABELS[button.dataset.period]) return;
+    chartPeriod = button.dataset.period;
+    press(document.querySelectorAll("[data-period]"), button);
+    if (chartRange === "custom") {
+      chartRange = lastPreset;
+      press(
+        document.querySelectorAll("[data-range]"),
+        document.querySelector(`[data-range="${lastPreset}"]`),
+      );
+    }
+    setCustomOpen(false);
+    syncRangeLabels();
     refresh();
   });
+});
+
+document.querySelectorAll("[data-range]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const range = button.dataset.range;
+    if (range !== "custom" && !RANGES[range]) return;
+    if (range === "custom") {
+      seedCustomDates();
+      const already = chartRange === "custom";
+      chartRange = "custom";
+      press(document.querySelectorAll("[data-range]"), button);
+      syncRangeLabels();
+      setCustomOpen(already ? document.querySelector(".custom-range").hidden : true);
+      if (!already) refresh();
+      return;
+    }
+    lastPreset = range;
+    chartRange = range;
+    press(document.querySelectorAll("[data-range]"), button);
+    setCustomOpen(false);
+    syncRangeLabels();
+    refresh();
+  });
+});
+
+document.addEventListener("click", (event) => {
+  if (!document.querySelector(".custom-picker").contains(event.target)) setCustomOpen(false);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") setCustomOpen(false);
+});
+
+document.querySelectorAll("#range-start, #range-end").forEach((input) => {
+  input.addEventListener("change", () => {
+    chartRange = "custom";
+    press(document.querySelectorAll("[data-range]"), document.querySelector('[data-range="custom"]'));
+    syncRangeLabels();
+    refresh();
+  });
+});
+
+const earliest = new Date();
+earliest.setDate(earliest.getDate() - 799);
+document.querySelectorAll("#range-start, #range-end").forEach((input) => {
+  input.min = dateInputValue(earliest);
+  input.max = dateInputValue(new Date());
 });
 
 refresh();

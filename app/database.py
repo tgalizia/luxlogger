@@ -280,14 +280,11 @@ def latest_sample(session) -> TelemetrySample | None:
     return session.scalar(select(TelemetrySample).order_by(TelemetrySample.recorded_at.desc()).limit(1))
 
 
-def samples_since(session, since: datetime) -> list[TelemetrySample]:
-    return list(
-        session.scalars(
-            select(TelemetrySample)
-            .where(TelemetrySample.recorded_at >= since)
-            .order_by(TelemetrySample.recorded_at.asc())
-        )
-    )
+def samples_since(session, since: datetime, until: datetime | None = None) -> list[TelemetrySample]:
+    query = select(TelemetrySample).where(TelemetrySample.recorded_at >= since)
+    if until is not None:
+        query = query.where(TelemetrySample.recorded_at < until)
+    return list(session.scalars(query.order_by(TelemetrySample.recorded_at.asc())))
 
 
 def add_indoor(session, room: str, temperature_c: float, recorded_at: datetime | None = None) -> IndoorTemperature:
@@ -304,14 +301,11 @@ def latest_indoor(session) -> IndoorTemperature | None:
     return session.scalar(select(IndoorTemperature).order_by(IndoorTemperature.recorded_at.desc()).limit(1))
 
 
-def indoor_since(session, since: datetime) -> list[IndoorTemperature]:
-    return list(
-        session.scalars(
-            select(IndoorTemperature)
-            .where(IndoorTemperature.recorded_at >= since)
-            .order_by(IndoorTemperature.recorded_at.asc())
-        )
-    )
+def indoor_since(session, since: datetime, until: datetime | None = None) -> list[IndoorTemperature]:
+    query = select(IndoorTemperature).where(IndoorTemperature.recorded_at >= since)
+    if until is not None:
+        query = query.where(IndoorTemperature.recorded_at < until)
+    return list(session.scalars(query.order_by(IndoorTemperature.recorded_at.asc())))
 
 
 def recent_indoor(session, limit: int = 50) -> list[IndoorTemperature]:

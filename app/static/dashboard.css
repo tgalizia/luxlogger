@@ -82,15 +82,40 @@
 .badge[data-tone="link"] { --dot: #e2e8f0; --lit: #475569; --fill: #e2e8f0; --ink-on: #334155; --glow: #94a3b8; }
 .label { color: var(--muted); font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase; }
 .value { font-size: 1.45rem; margin-top: 6px; }
-.chart-head {
+.range-controls {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 8px;
+  gap: 10px 16px;
+  margin-bottom: 16px;
 }
-.chart-head h2 { margin: 0; }
+.custom-picker { position: relative; }
+.custom-range {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 220px;
+  padding: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 10px 28px rgba(28, 25, 23, 0.14);
+}
+.custom-range[hidden] { display: none; }
+.custom-range label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
 .ranges { display: flex; flex-wrap: wrap; gap: 6px; }
 .ranges button {
   background: transparent;
@@ -109,6 +134,7 @@
 #chart-wrap { height: 320px; margin-top: 8px; }
 #dhw-wrap { height: 260px; margin-top: 4px; }
 #devices-wrap { height: 220px; margin-top: 4px; }
+#energy-wrap { height: 260px; margin-top: 4px; }
 h2.subhead { margin-top: 18px; }
 #indoor-form {
   display: flex;
@@ -145,15 +171,15 @@ button {
 button:disabled { opacity: 0.6; cursor: wait; }
 #form-message { margin: 0; font-size: 0.82rem; }
 #form-message:empty { display: none; }
-#energy { margin-top: 16px; }
-#energy h2 { margin-bottom: 6px; }
-#energy h3 { font-size: 0.92rem; margin: 0 0 8px; }
-#energy-note { margin-bottom: 12px; }
-.energy-grid {
+.summary-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 18px;
+  gap: 12px;
+  margin-top: 16px;
 }
+.summary-grid > .card { margin-top: 0; }
+#energy h2, #heat-meter h2 { margin-bottom: 6px; }
+#energy-note, #meter-note { margin-bottom: 12px; }
 .energy-row {
   display: flex;
   justify-content: space-between;
@@ -168,10 +194,8 @@ button:disabled { opacity: 0.6; cursor: wait; }
   padding-top: 8px;
 }
 .energy-empty { margin: 0; }
-footer { margin-top: 18px; font-size: 0.85rem; }
 @media (max-width: 800px) {
-  .energy-grid { display: block; }
   .metrics { grid-template-columns: 1fr; }
   .quad { grid-template-columns: 1fr 1fr; }
-  .energy-grid > div + div { margin-top: 16px; }
+  .summary-grid { grid-template-columns: 1fr; }
 }

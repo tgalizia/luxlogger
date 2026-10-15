@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from starlette.requests import Request
 from sqlalchemy.orm import Session
 
-from app.ai_advisor import AdvisorError, advise, clean_note, suggest_settings
+from app.ai_advisor import AdvisorError, advise, clean_note, limit_findings, suggest_settings
 from app.config import PROJECT_ROOT, get_settings
 from app.database import (
     add_indoor,
@@ -221,40 +221,56 @@ def status(session: Session = Depends(get_db)):
     }
 
 
+MAX_LOOKBACK = timedelta(days=800)
+
+
 def _naive_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value
     return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
+def _range_start(since: datetime | None, default_hours: int) -> datetime:
+    start = utcnow() - timedelta(hours=default_hours)
+    if since is None:
+        return start
+    start = _naive_utc(since)
+    if utcnow() - start > MAX_LOOKBACK:
+        raise HTTPException(status_code=400, detail="Choose a range within the last two years.")
+    return start
+
+
+def _exclusive_end(start: datetime, until: datetime | None) -> datetime | None:
+    if until is None:
+        return None
+    end = _naive_utc(until)
+    if end <= start:
+        raise HTTPException(status_code=400, detail="The end of the range must be after the start.")
+    return end
+
+
 @app.get("/api/telemetry")
 def telemetry(
     hours: int = Query(default=24, ge=1, le=168),
     since: datetime | None = Query(default=None),
+    until: datetime | None = Query(default=None),
     session: Session = Depends(get_db),
 ):
-    start = utcnow() - timedelta(hours=hours)
-    if since is not None:
-        start = _naive_utc(since)
-        if utcnow() - start > timedelta(days=370):
-            raise HTTPException(status_code=400, detail="Choose a range within the last year.")
-    rows = samples_since(session, start)
+    start = _range_start(since, hours)
+    rows = samples_since(session, start, _exclusive_end(start, until))
     return {"since": isoformat_utc(start), "samples": [sample_to_dict(row) for row in rows]}
 
 
 @app.get("/api/energy")
 def energy(
     since: datetime | None = Query(default=None),
+    until: datetime | None = Query(default=None),
     session: Session = Depends(get_db),
 ):
-    start = utcnow() - timedelta(hours=24)
-    if since is not None:
-        start = _naive_utc(since)
-        if utcnow() - start > timedelta(days=370):
-            raise HTTPException(status_code=400, detail="Choose a range within the last year.")
+    start = _range_start(since, 24)
     preference = preference_to_dict(get_app_preference(session))
     return energy_report(
-        samples_since(session, start),
+        samples_since(session, start, _exclusive_end(start, until)),
         latest_sample(session),
         preference["price_per_kwh"],
         preference["currency"],
@@ -298,10 +314,12 @@ def read_equipment(session: Session = Depends(get_db)):
 def list_indoor(
     limit: int = Query(default=48, ge=1, le=5000),
     since: datetime | None = Query(default=None),
+    until: datetime | None = Query(default=None),
     session: Session = Depends(get_db),
 ):
     if since is not None:
-        rows = indoor_since(session, _naive_utc(since))
+        start = _naive_utc(since)
+        rows = indoor_since(session, start, _exclusive_end(start, until))
     else:
         rows = recent_indoor(session, limit)
     return {"readings": [indoor_to_dict(row) for row in rows]}
@@ -321,10 +339,40 @@ def advice_latest(session: Session = Depends(get_db)):
     return {"report": None if row is None else report_to_dict(row)}
 
 
+@app.get("/api/diagnostics")
+def diagnostics_view(
+    since: datetime | None = Query(default=None),
+    until: datetime | None = Query(default=None),
+    session: Session = Depends(get_db),
+):
+    """Summarize the selected window. This is the payload the advisor later receives."""
+    settings = get_settings()
+    return limit_findings(_diagnostics(session, settings, since, until))
+
+
+def _advice_window(
+    since: datetime | None,
+    until: datetime | None,
+    hours: int | None,
+    default_hours: int,
+) -> tuple[datetime, datetime | None, int]:
+    """Start, exclusive end, and requested length in hours."""
+    if since is None and until is None:
+        window = hours if hours is not None else default_hours
+        return utcnow() - timedelta(hours=window), None, window
+    start = _range_start(since, hours if hours is not None else default_hours)
+    end = _exclusive_end(start, until)
+    span_end = end if end is not None else utcnow()
+    window = max(1, round((span_end - start).total_seconds() / 3600))
+    return start, end, window
+
+
 @app.post("/api/advice")
 def create_advice(
     body: NoteIn | None = None,
     hours: int | None = Query(default=None, ge=1, le=168),
+    since: datetime | None = Query(default=None),
+    until: datetime | None = Query(default=None),
     session: Session = Depends(get_db),
 ):
     settings = get_settings()
@@ -333,9 +381,8 @@ def create_advice(
         note = clean_note(None if body is None else body.note)
     except AdvisorError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    window = hours or settings.advice_window_hours
-    since = utcnow() - timedelta(hours=window)
-    rows = samples_since(session, since)
+    start, end, window = _advice_window(since, until, hours, settings.advice_window_hours)
+    rows = samples_since(session, start, end)
     if not rows:
         raise HTTPException(status_code=400, detail="No telemetry in the selected window yet.")
     indoor = latest_indoor(session)
@@ -346,6 +393,7 @@ def create_advice(
         indoor_room=None if indoor is None else indoor.room,
     )
     findings["window_hours"] = window
+    findings = limit_findings(findings)
     try:
         provider, model, suggestion = advise(
             findings,
@@ -393,9 +441,14 @@ def _controller(session: Session):
     return settings, host, port
 
 
-def _diagnostics(session: Session, settings) -> dict:
-    since = utcnow() - timedelta(hours=settings.advice_window_hours)
-    rows = samples_since(session, since)
+def _diagnostics(
+    session: Session,
+    settings,
+    since: datetime | None = None,
+    until: datetime | None = None,
+) -> dict:
+    start, end, window = _advice_window(since, until, None, settings.advice_window_hours)
+    rows = samples_since(session, start, end)
     if not rows:
         raise HTTPException(status_code=400, detail="No telemetry in the selected window yet.")
     indoor = latest_indoor(session)
@@ -405,7 +458,7 @@ def _diagnostics(session: Session, settings) -> dict:
         indoor_c=None if indoor is None else indoor.temperature_c,
         indoor_room=None if indoor is None else indoor.room,
     )
-    findings["window_hours"] = settings.advice_window_hours
+    findings["window_hours"] = window
     return findings
 
 
@@ -440,14 +493,19 @@ def list_settings(session: Session = Depends(get_db)):
 
 
 @app.post("/api/settings/suggest")
-def create_suggestions(body: NoteIn | None = None, session: Session = Depends(get_db)):
+def create_suggestions(
+    body: NoteIn | None = None,
+    since: datetime | None = Query(default=None),
+    until: datetime | None = Query(default=None),
+    session: Session = Depends(get_db),
+):
     try:
         note = clean_note(None if body is None else body.note)
     except AdvisorError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     settings, host, port = _controller(session)
     runtime = effective_runtime(session)
-    findings = _diagnostics(session, settings)
+    findings = _diagnostics(session, settings, since, until)
     try:
         current = read_settings(host, port)
     except (OSError, TimeoutError) as exc:

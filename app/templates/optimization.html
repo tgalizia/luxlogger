@@ -5,14 +5,37 @@
 
 {% block head %}
 <link rel="stylesheet" href="/static/pump_table.css?v=6" />
-<link rel="stylesheet" href="/static/optimization.css?v=8" />
+<link rel="stylesheet" href="/static/optimization.css?v=10" />
 {% endblock %}
 
 {% block body %}
 <header>
-  {{ ui.header_copy("AI Optimization", "Ask the advisor what to change from the samples already stored.") }}
+  {{ ui.header_copy("AI Optimization", "Choose a period. The card below is what the advisor reads.") }}
 </header>
-<div id="findings"></div>
+<section class="card data-card" aria-labelledby="data-title">
+  <div class="data-head">
+    <h2 id="data-title">Data for the advisor</h2>
+    <p id="data-window">Last 24 hours</p>
+  </div>
+  <div class="range-controls">
+    <div class="ranges" role="group" aria-label="Analysis period">
+      <button type="button" data-range="hour" aria-pressed="false">Last hour</button>
+      <button type="button" data-range="day" class="active" aria-pressed="true">Last 24 hours</button>
+      <button type="button" data-range="week" aria-pressed="false">Last 7 days</button>
+      <button type="button" data-range="month" aria-pressed="false">Last 30 days</button>
+      <button type="button" data-range="year" aria-pressed="false">Last year</button>
+      <div class="custom-picker">
+        <button type="button" data-range="custom" aria-pressed="false" aria-expanded="false" aria-controls="advice-custom-range">Custom</button>
+        <div class="custom-range" id="advice-custom-range" role="dialog" aria-label="Custom dates" hidden>
+          <label>Start <input id="advice-range-start" type="date" /></label>
+          <label>End <input id="advice-range-end" type="date" /></label>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="findings" aria-live="polite"></div>
+  <p class="data-note">Ask advisor and Suggest from history send these figures, not every stored reading.</p>
+</section>
 <div class="advice-row">
   {% call ui.card("section") %}
   <h2>Ask advisor</h2>
@@ -54,5 +77,5 @@
 
 {% block scripts %}
 <script src="/static/pump_table.js?v=4"></script>
-<script src="/static/optimization.js?v=4"></script>
+<script src="/static/optimization.js?v=6"></script>
 {% endblock %}

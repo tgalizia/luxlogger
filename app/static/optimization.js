@@ -4,6 +4,7 @@ const fields = {
   adviceBody: document.querySelector("#advice-body"),
   adviceMeta: document.querySelector("#advice-meta"),
   findings: document.querySelector("#findings"),
+  dataWindow: document.querySelector("#data-window"),
 };
 
 const pumpTable = mountPumpTable(document.querySelector("#pump-table"), { editable: false });
@@ -11,6 +12,16 @@ const pumpTable = mountPumpTable(document.querySelector("#pump-table"), { editab
 const adviceButton = document.querySelector("#advice-button");
 const adviceNote = document.querySelector("#advice-note");
 let advicePending = false;
+
+const RANGE_LABELS = {
+  hour: "Last hour",
+  day: "Last 24 hours",
+  week: "Last 7 days",
+  month: "Last 30 days",
+  year: "Last year",
+};
+let adviceRange = "day";
+let lastPreset = "day";
 
 function missing(value) {
   return value === null || value === undefined || value === "";
@@ -59,9 +70,36 @@ async function readError(response) {
   return { message: response.statusText || "Request failed", findings: null };
 }
 
+function windowText(findings) {
+  if (!findings) return "";
+  const start = formatWhen(findings.window_start);
+  const end = formatWhen(findings.window_end);
+  if (start && end) return `${start} – ${end}`;
+  return start || end;
+}
+
+function selectionLabel() {
+  if (adviceRange !== "custom") return RANGE_LABELS[adviceRange];
+  const span = selectedWindow();
+  if (!span) return "Custom";
+  const startText = formatDay(span.start);
+  const endText = formatDay(new Date(span.end.getTime() - 1));
+  return startText === endText ? startText : `${startText} – ${endText}`;
+}
+
+function describeSelection(findings) {
+  const span = windowText(findings);
+  const count = findings && !missing(findings.sample_count) ? `${findings.sample_count} samples` : "";
+  return [selectionLabel(), span, count].filter(Boolean).join(" · ");
+}
+
 function renderFindings(findings) {
   fields.findings.replaceChildren();
-  if (!findings) return;
+  if (!findings) {
+    fields.dataWindow.textContent = selectionLabel();
+    return;
+  }
+  fields.dataWindow.textContent = describeSelection(findings);
   const rows = [
     ["Samples", findings.sample_count],
     ["Compressor starts", findings.compressor_starts],
@@ -95,8 +133,7 @@ function showStatus(message) {
   fields.adviceMeta.textContent = "";
 }
 
-function renderAdvice(report, message) {
-  renderFindings(report && report.findings);
+function renderSuggestion(report, message) {
   if (report && report.suggestion) {
     const paragraphs = report.suggestion.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
     fields.adviceBody.replaceChildren();
@@ -106,11 +143,47 @@ function renderAdvice(report, message) {
       fields.adviceBody.append(paragraph);
     }
     const when = formatWhen(report.created_at);
-    fields.adviceMeta.textContent = [report.provider, report.model, when].filter(Boolean).join(" · ");
+    fields.adviceMeta.textContent = [windowText(report.findings), report.provider, report.model, when]
+      .filter(Boolean)
+      .join(" · ");
     fields.adviceMeta.hidden = false;
     return;
   }
   showStatus(message || "Ask for a suggestion after a few samples have been stored.");
+}
+
+function renderAdvice(report, message, paintFindings) {
+  if (paintFindings && report && report.findings) renderFindings(report.findings);
+  renderSuggestion(report, message);
+}
+
+let previewToken = 0;
+
+async function refreshPreview(options) {
+  const quiet = options && options.quiet;
+  const token = ++previewToken;
+  const query = analysisQuery();
+  if (!query) {
+    fields.findings.replaceChildren();
+    fields.dataWindow.textContent = "Choose a start date and an end date after it.";
+    return;
+  }
+  if (!quiet) {
+    fields.findings.replaceChildren();
+    fields.dataWindow.textContent = `Reading ${periodPhrase()}…`;
+  }
+  const response = await fetch(`/api/diagnostics?${query}`);
+  if (token !== previewToken) return;
+  if (!response.ok) {
+    const error = await readError(response);
+    if (token !== previewToken) return;
+    fields.findings.replaceChildren();
+    fields.dataWindow.textContent = `${selectionLabel()} · ${error.message}`;
+    return;
+  }
+  const findings = await response.json();
+  if (token !== previewToken) return;
+  renderFindings(findings);
 }
 
 async function loadLatest() {
@@ -118,26 +191,169 @@ async function loadLatest() {
   const response = await fetch("/api/advice/latest");
   if (!response.ok) return;
   const payload = await response.json();
-  if (payload.report) renderAdvice(payload.report);
+  if (payload.report) renderSuggestion(payload.report);
 }
 
+function dateInputValue(date) {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function parseDateInput(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setHours(0, 0, 0, 0);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  return date;
+}
+
+function presetWindow(range) {
+  const end = new Date();
+  const start = new Date(end);
+  if (range === "hour") start.setTime(end.getTime() - 60 * 60 * 1000);
+  else if (range === "week") start.setDate(start.getDate() - 7);
+  else if (range === "month") start.setDate(start.getDate() - 30);
+  else if (range === "year") start.setFullYear(start.getFullYear() - 1);
+  else start.setTime(end.getTime() - 24 * 60 * 60 * 1000);
+  return { start, end };
+}
+
+function customWindow() {
+  const start = parseDateInput(document.querySelector("#advice-range-start").value);
+  const endDay = parseDateInput(document.querySelector("#advice-range-end").value);
+  if (!start || !endDay || endDay < start) return null;
+  const end = new Date(endDay);
+  end.setDate(end.getDate() + 1);
+  return { start, end };
+}
+
+function selectedWindow() {
+  if (adviceRange === "custom") return customWindow();
+  return presetWindow(adviceRange);
+}
+
+function formatDay(date) {
+  return new Intl.DateTimeFormat(DISPLAY_LOCALE, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+
+function periodPhrase() {
+  if (adviceRange !== "custom") {
+    const label = RANGE_LABELS[adviceRange];
+    return `the ${label.charAt(0).toLowerCase()}${label.slice(1)}`;
+  }
+  const span = selectedWindow();
+  if (!span) return "";
+  const startText = formatDay(span.start);
+  const endText = formatDay(new Date(span.end.getTime() - 1));
+  return startText === endText ? startText : `${startText} – ${endText}`;
+}
+
+function analysisQuery() {
+  const span = selectedWindow();
+  if (!span) return null;
+  const since = encodeURIComponent(span.start.toISOString());
+  const until = encodeURIComponent(span.end.toISOString());
+  return `since=${since}&until=${until}`;
+}
+
+function press(buttons, selected) {
+  buttons.forEach((item) => {
+    const active = item === selected;
+    item.classList.toggle("active", active);
+    item.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
+
+function seedCustomDates() {
+  const span = presetWindow(lastPreset);
+  document.querySelector("#advice-range-start").value = dateInputValue(span.start);
+  document.querySelector("#advice-range-end").value = dateInputValue(new Date(span.end.getTime() - 1));
+}
+
+function setCustomOpen(open) {
+  const panel = document.querySelector("#advice-custom-range");
+  const button = document.querySelector('[data-range="custom"]');
+  panel.hidden = !open;
+  button.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+document.querySelectorAll("[data-range]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const range = button.dataset.range;
+    if (range !== "custom" && !RANGE_LABELS[range]) return;
+    if (range === "custom") {
+      const already = adviceRange === "custom";
+      if (!already) seedCustomDates();
+      adviceRange = "custom";
+      press(document.querySelectorAll("[data-range]"), button);
+      setCustomOpen(already ? document.querySelector("#advice-custom-range").hidden : true);
+      refreshPreview();
+      return;
+    }
+    lastPreset = range;
+    adviceRange = range;
+    press(document.querySelectorAll("[data-range]"), button);
+    setCustomOpen(false);
+    refreshPreview();
+  });
+});
+
+document.addEventListener("click", (event) => {
+  if (!document.querySelector(".custom-picker").contains(event.target)) setCustomOpen(false);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") setCustomOpen(false);
+});
+
+document.querySelectorAll("#advice-range-start, #advice-range-end").forEach((input) => {
+  input.addEventListener("change", () => {
+    adviceRange = "custom";
+    press(document.querySelectorAll("[data-range]"), document.querySelector('[data-range="custom"]'));
+    refreshPreview();
+  });
+});
+
+const earliestAdvice = new Date();
+earliestAdvice.setDate(earliestAdvice.getDate() - 799);
+document.querySelectorAll("#advice-range-start, #advice-range-end").forEach((input) => {
+  input.min = dateInputValue(earliestAdvice);
+  input.max = dateInputValue(new Date());
+});
+
 adviceButton.addEventListener("click", async () => {
+  const query = analysisQuery();
+  if (!query) {
+    showStatus("Choose a start date and an end date after it.");
+    return;
+  }
+  const sentToken = previewToken;
   advicePending = true;
   adviceButton.disabled = true;
-  showStatus("Reading the last day of samples…");
+  showStatus(`Reading ${periodPhrase()}…`);
   try {
-    const response = await fetch(adviceUrl, {
+    const response = await fetch(`${adviceUrl}?${query}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ note: adviceNote.value }),
     });
     if (!response.ok) {
       const error = await readError(response);
-      renderAdvice(error.findings ? { findings: error.findings, suggestion: "" } : null, error.message);
+      renderAdvice(
+        error.findings ? { findings: error.findings, suggestion: "" } : null,
+        error.message,
+        sentToken === previewToken,
+      );
       if (error.findings) showStatus(error.message);
       return;
     }
-    renderAdvice(await response.json());
+    renderAdvice(await response.json(), undefined, sentToken === previewToken);
   } finally {
     advicePending = false;
     adviceButton.disabled = false;
@@ -220,12 +436,19 @@ function openConfirm(setting, nextValue, from, to) {
 }
 
 suggestButton.addEventListener("click", async () => {
+  const query = analysisQuery();
+  if (!query) {
+    changesSection.hidden = false;
+    changesEl.replaceChildren();
+    changesStatus.textContent = "Choose a start date and an end date after it.";
+    return;
+  }
   suggestButton.disabled = true;
   changesSection.hidden = false;
   changesEl.replaceChildren();
-  changesStatus.textContent = "Looking at the last 24 hours…";
+  changesStatus.textContent = `Looking at ${periodPhrase()}…`;
   try {
-    const response = await fetch("/api/settings/suggest", {
+    const response = await fetch(`/api/settings/suggest?${query}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ note: adviceNote.value }),
@@ -300,6 +523,7 @@ confirmOk.addEventListener("click", async () => {
 
 window.addEventListener("controller-tick", () => {
   loadLatest();
+  refreshPreview({ quiet: true });
   pumpTable.load();
 });
 
@@ -309,3 +533,4 @@ window.addEventListener("controller-polling", (event) => {
 
 pumpTable.load();
 loadLatest();
+refreshPreview();

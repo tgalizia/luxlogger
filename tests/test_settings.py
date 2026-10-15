@@ -2,16 +2,24 @@
 
 import pytest
 
+from datetime import timedelta
+
+from fastapi import HTTPException
+
 from app.ai_advisor import (
     SETTINGS_PROMPT,
     SYSTEM_PROMPT,
     AdvisorError,
+    _diagnostics_prompt,
     context_block,
+    limit_findings,
     suggest_settings,
     validate_model,
     validate_provider,
     with_context,
 )
+from app.database import utcnow
+from app.main import _advice_window
 from app.luxtronik_client import SettingsWriteError, commit_setting
 from app.runtime import PreferenceError, validate_port
 from app.settings_catalog import SettingsError, filter_changes, validate_value
@@ -116,6 +124,82 @@ def test_prompts_use_equipment_and_answer_the_owner_note_first():
         assert "Alpha Innotec" not in prompt
         assert "Luxtronik 2" not in prompt
     assert "you may change it to an allowed mode" in SETTINGS_PROMPT
+
+
+def _current_settings():
+    return [
+        {"id": "ID_Ba_Hz_akt", "value": "Automatic"},
+        {"id": "ID_Ba_Bw_akt", "value": "Automatic"},
+        {"id": "ID_Einst_BWS_akt", "value": 46.0},
+        {"id": "ID_Einst_WK_akt", "value": 20.0},
+    ]
+
+
+def test_cycle_lengths_at_the_cap_stay_unchanged():
+    lengths = list(range(200))
+    findings = {"cycle_lengths_s": lengths, "short_cycle_threshold_s": 600}
+    assert limit_findings(findings) is findings
+    prompt = _diagnostics_prompt(findings)
+    assert "cycle_lengths_s" in prompt
+    assert "cycle_length_summary" not in prompt
+
+
+def test_cycle_lengths_over_the_cap_are_summarized():
+    lengths = list(range(1, 202))
+    findings = {"cycle_lengths_s": lengths, "sample_count": 500, "short_cycle_threshold_s": 600}
+    limited = limit_findings(findings)
+    assert "cycle_lengths_s" not in limited
+    assert limited["sample_count"] == 500
+    assert limited["cycle_length_summary"] == {
+        "count": 201,
+        "min_s": 1,
+        "median_s": 101,
+        "p90_s": 181,
+        "max_s": 201,
+    }
+    assert findings["cycle_lengths_s"] == lengths
+    prompt = _diagnostics_prompt(findings)
+    assert "cycle_length_summary" in prompt
+    assert "cycle_lengths_s" not in prompt
+
+
+def test_setting_prompt_summarizes_a_long_cycle_list():
+    seen = {}
+
+    def complete(prompt):
+        seen["prompt"] = prompt
+        return '{"changes": []}'
+
+    suggest_settings(
+        _current_settings(),
+        {"cycle_lengths_s": list(range(1, 202)), "short_cycles": 40, "completed_cycles": 201},
+        complete=complete,
+    )
+    assert "cycle_length_summary" in seen["prompt"]
+    assert "cycle_lengths_s" not in seen["prompt"]
+    assert '"short_cycles": 40' in seen["prompt"]
+
+
+def test_advice_window_defaults_to_one_day_and_rejects_an_old_start():
+    start, end, window = _advice_window(None, None, None, 24)
+    assert end is None
+    assert window == 24
+    assert abs((utcnow() - start).total_seconds() - 24 * 3600) < 5
+
+    start_at = utcnow() - timedelta(days=3, hours=2)
+    end_at = utcnow() - timedelta(days=1)
+    start, end, window = _advice_window(start_at, end_at, None, 24)
+    assert start == start_at
+    assert end == end_at
+    assert window == 50
+
+    with pytest.raises(HTTPException) as caught:
+        _advice_window(utcnow() - timedelta(days=801), None, None, 24)
+    assert caught.value.status_code == 400
+
+    with pytest.raises(HTTPException) as caught:
+        _advice_window(end_at, start_at, None, 24)
+    assert caught.value.status_code == 400
 
 
 def test_unknown_provider_and_model_are_rejected():

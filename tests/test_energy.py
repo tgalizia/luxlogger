@@ -5,7 +5,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.energy import PriceError, delivered_kwh, energy_report, validate_currency, validate_price
+from app.energy import (
+    PriceError,
+    cumulative_kwh,
+    delivered_kwh,
+    energy_report,
+    validate_currency,
+    validate_price,
+)
 from app.luxtronik_client import demo_snapshot
 
 
@@ -32,6 +39,29 @@ def test_delivered_heat_restarts_after_a_reset():
         _sample(heat_heating_kwh=8),
     ]
     assert delivered_kwh(samples, "heat_heating_kwh") == 18.0
+
+
+def test_cumulative_heat_starts_at_zero_and_matches_the_total():
+    samples = [
+        _sample(heat_heating_kwh=10.0),
+        _sample(),
+        _sample(heat_heating_kwh=10.5),
+        _sample(heat_heating_kwh=12.0),
+    ]
+    assert cumulative_kwh(samples, "heat_heating_kwh") == [0.0, 0.5, 2.0]
+    assert cumulative_kwh(samples, "heat_heating_kwh")[-1] == delivered_kwh(samples, "heat_heating_kwh")
+
+
+def test_cumulative_heat_restarts_after_a_reset():
+    samples = [
+        _sample(heat_heating_kwh=100),
+        _sample(heat_heating_kwh=110),
+        _sample(heat_heating_kwh=5),
+        _sample(heat_heating_kwh=8),
+    ]
+    assert cumulative_kwh(samples, "heat_heating_kwh") == [0.0, 10.0, 15.0, 18.0]
+    assert cumulative_kwh([_sample(heat_heating_kwh=4)], "heat_heating_kwh") == [0.0]
+    assert cumulative_kwh([_sample(), _sample()], "heat_heating_kwh") == []
 
 
 def test_one_reading_has_no_period_figure():

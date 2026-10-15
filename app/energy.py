@@ -38,25 +38,49 @@ def validate_currency(value) -> str:
     return text
 
 
-def delivered_kwh(samples, attr: str) -> float | None:
-    """Sum increases of one cumulative counter. A drop restarts from the new reading."""
+def _counter_values(samples, attr: str) -> list[float]:
     values = []
     for sample in samples:
         value = getattr(sample, attr, None)
         if value is None:
             continue
         values.append(float(value))
+    return values
+
+
+def _added_kwh(previous: float, value: float) -> float:
+    """Increase since the previous reading. A drop restarts from the new reading."""
+    if value + 1e-6 >= previous:
+        return value - previous
+    return value
+
+
+def delivered_kwh(samples, attr: str) -> float | None:
+    """Sum increases of one cumulative counter. A drop restarts from the new reading."""
+    values = _counter_values(samples, attr)
     if len(values) < 2:
         return None
     total = 0.0
     previous = values[0]
     for value in values[1:]:
-        if value + 1e-6 >= previous:
-            total += value - previous
-        else:
-            total += value
+        total += _added_kwh(previous, value)
         previous = value
     return round(total, 1)
+
+
+def cumulative_kwh(samples, attr: str) -> list[float]:
+    """Running heat delivered from the first reading in the window."""
+    values = _counter_values(samples, attr)
+    if not values:
+        return []
+    total = 0.0
+    previous = values[0]
+    points = [0.0]
+    for value in values[1:]:
+        total += _added_kwh(previous, value)
+        points.append(round(total, 1))
+        previous = value
+    return points
 
 
 def energy_report(samples, latest, price: float | None, currency: str, since_iso: str | None) -> dict:

@@ -2,6 +2,7 @@
 
 import json
 import logging
+import math
 
 from app.config import Settings, get_settings
 from app.settings_catalog import filter_changes
@@ -22,6 +23,7 @@ MODEL_CHOICES = {
 
 NOTE_LIMIT = 2000
 PROMPT_LIMIT = 8000
+CYCLE_LENGTH_LIMIT = 200
 
 SYSTEM_PROMPT = """You advise the owner of a heat pump.
 When the user message lists Equipment, use those lines: pump maker, pump model, controller, and controller software. Do not assume a different machine.
@@ -182,12 +184,43 @@ def _selection(settings: Settings, provider: str | None, model: str | None) -> t
     return chosen_provider, DEFAULT_MODELS[chosen_provider]
 
 
+def limit_findings(findings: dict) -> dict:
+    """Drop the raw cycle list once it would dominate the model prompt."""
+    lengths = findings.get("cycle_lengths_s")
+    if not isinstance(lengths, list) or len(lengths) <= CYCLE_LENGTH_LIMIT:
+        return findings
+    ordered = sorted(int(round(float(length))) for length in lengths)
+    trimmed = dict(findings)
+    del trimmed["cycle_lengths_s"]
+    trimmed["cycle_length_summary"] = {
+        "count": len(ordered),
+        "min_s": ordered[0],
+        "median_s": _percentile(ordered, 50),
+        "p90_s": _percentile(ordered, 90),
+        "max_s": ordered[-1],
+    }
+    return trimmed
+
+
+def _percentile(ordered: list[int], percent: int) -> int:
+    if len(ordered) == 1:
+        return int(ordered[0])
+    position = (len(ordered) - 1) * percent / 100
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    if lower == upper:
+        return int(ordered[lower])
+    weight = position - lower
+    return int(ordered[lower] + (ordered[upper] - ordered[lower]) * weight + 0.5)
+
+
 def _diagnostics_prompt(findings: dict) -> str:
+    limited = limit_findings(findings)
     return (
         "Diagnostics JSON:\n"
-        + json.dumps(findings, indent=2)
+        + json.dumps(limited, indent=2)
         + "\n\nA short cycle is a completed compressor run shorter than "
-        + f"{findings.get('short_cycle_threshold_s', 600)} seconds."
+        + f"{limited.get('short_cycle_threshold_s', 600)} seconds."
     )
 
 
@@ -196,7 +229,7 @@ def _settings_prompt(current: list[dict], findings: dict) -> str:
         "Current settings JSON:\n"
         + json.dumps(current, indent=2)
         + "\n\nDiagnostics JSON:\n"
-        + json.dumps(findings, indent=2)
+        + json.dumps(limit_findings(findings), indent=2)
     )
 
 
