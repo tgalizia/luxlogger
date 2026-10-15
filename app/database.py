@@ -101,6 +101,8 @@ class AppPreference(Base):
     ai_model: Mapped[str | None] = mapped_column(String(128))
     advice_prompt: Mapped[str | None] = mapped_column(Text)
     settings_prompt: Mapped[str | None] = mapped_column(Text)
+    indoor_source: Mapped[str | None] = mapped_column(String(16))
+    indoor_room: Mapped[str | None] = mapped_column(String(80))
 
 
 def _connect_args(url: str) -> dict:
@@ -142,6 +144,8 @@ _PREFERENCE_COLUMNS = {
     "ai_model": "VARCHAR(128)",
     "advice_prompt": "TEXT",
     "settings_prompt": "TEXT",
+    "indoor_source": "VARCHAR(16)",
+    "indoor_room": "VARCHAR(80)",
 }
 
 

@@ -18,10 +18,10 @@ The browser has four pages:
 
 | Page | What you see |
 | --- | --- |
-| Dashboard | Flow, return, outdoor, and hot-water temperatures, compressor and backup-heater state, operating mode, and a chart of stored samples. You can also type a room temperature. |
+| Dashboard | Flow, return, outdoor, and hot-water temperatures, compressor and backup-heater state, operating mode, and a chart of stored samples. Indoor temperature is typed in, or read from a Shelly H&T or the Luxtronik room unit. |
 | AI Optimization | Diagnostics from the stored window, then a written suggestion from OpenAI, Gemini, or Anthropic. Optional, and only used when you ask. |
 | Pump settings | A first look at controller values. A write is sent only after you confirm that one setting. |
-| App settings | Controller address and port, equipment names, electricity price, the advisor model, and the two prompts the advisor follows. |
+| App settings | Controller address and port, indoor temperature source, equipment names, electricity price, the advisor model, and the two prompts the advisor follows. |
 
 ![AI Optimization, with diagnostics from stored samples and a written suggestion](docs/images/optimization.png)
 
@@ -54,7 +54,7 @@ Set `LUXTRONIK_PORT` to the port your unit actually listens on.
 `data/luxtronik_data.db` holds:
 
 - `telemetry_samples` — flow, return, outdoor, and hot-water temperatures, setpoints, flow rate, compressor speed and runtime, backup-heater stage, operating mode, and heat-meter totals
-- `indoor_temperatures` — room readings you type in
+- `indoor_temperatures` — room readings typed in, or read from a Shelly H&T or the Luxtronik room unit
 - `advisor_reports` — the diagnostics JSON and the suggestion text
 - `setting_changes` — values you confirmed on the pump settings page
 - `app_preferences` — address, equipment, price, and advisor options saved from the UI
@@ -249,7 +249,8 @@ A push to `main` can do that automatically when a self-hosted GitHub Actions run
 - `GET /api/status` — connection health and the latest sample
 - `GET /api/telemetry?hours=24` — stored samples. `since` selects a start time inside the last year
 - `GET /api/energy` — heat delivered and cost for the selected range
-- `POST /api/indoor` — `{ "temperature_c": 21.5, "room": "living room" }`
+- `POST /api/indoor` — `{ "temperature_c": 21.5, "room": "living room" }`, only while Enter by hand is selected
+- `GET /api/indoor/shelly?temperature_c=21.5` — Shelly H&T webhook, only while that sensor is selected
 - `GET /api/indoor`
 - `POST /api/advice` — diagnostics for the window, then a model suggestion
 - `GET /api/advice/latest`
@@ -295,6 +296,5 @@ Installing `requirements.txt` also installs the libraries those projects depend 
 - Authentication, so the UI can be reached more carefully than “anyone on the LAN”
 - Pump parameter checking and changing, beyond the single confirmed write that exists today
 - A better layout
-- An interface to a temperature sensor, so the indoor temperature is read automatically instead of typed into the dashboard
 
 Contributions are welcome.

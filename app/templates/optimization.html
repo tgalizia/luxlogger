@@ -1,74 +1,80 @@
 {% extends "base.html" %}
 {% import "macros.html" as ui %}
 
-{% block title %}AI Optimization{% endblock %}
+{% block title %}AI Advisor{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="/static/pump_table.css?v=6" />
-<link rel="stylesheet" href="/static/optimization.css?v=11" />
+<link rel="stylesheet" href="/static/pump_table.css?v=7" />
+<link rel="stylesheet" href="/static/optimization.css?v=14" />
 {% endblock %}
 
 {% block body %}
 <header>
-  {{ ui.header_copy("AI Optimization", "Choose a period. The card below is what the advisor reads.") }}
+  {{ ui.header_copy("AI Advisor", "Pick a period, then ask a question or check the settings.") }}
 </header>
-<section class="card data-card" aria-labelledby="data-title">
-  <div class="data-head">
-    <h2 id="data-title">Data for the advisor</h2>
-    <p id="data-window">Last 24 hours</p>
-  </div>
-  <div class="range-controls">
-    <div class="ranges" role="group" aria-label="Analysis period">
-      <button type="button" data-range="hour" aria-pressed="false">Last hour</button>
-      <button type="button" data-range="day" class="active" aria-pressed="true">Last 24 hours</button>
-      <button type="button" data-range="week" aria-pressed="false">Last 7 days</button>
-      <button type="button" data-range="month" aria-pressed="false">Last 30 days</button>
-      <button type="button" data-range="year" aria-pressed="false">Last year</button>
-      <div class="custom-picker">
-        <button type="button" data-range="custom" aria-pressed="false" aria-expanded="false" aria-controls="advice-custom-range">Custom</button>
-        <div class="custom-range" id="advice-custom-range" role="dialog" aria-label="Custom dates" hidden>
-          <label>Start <input id="advice-range-start" type="date" /></label>
-          <label>End <input id="advice-range-end" type="date" /></label>
+<section class="card advisor">
+  <section class="advisor-block" aria-labelledby="data-title">
+    <div class="data-head">
+      <h2 id="data-title">Data for the AI Advisor</h2>
+      <p id="data-window">Last 24 hours</p>
+    </div>
+    <div class="range-controls">
+      <div class="ranges" role="group" aria-label="Analysis period">
+        <button type="button" data-range="hour" aria-pressed="false">Last hour</button>
+        <button type="button" data-range="day" class="active" aria-pressed="true">Last 24 hours</button>
+        <button type="button" data-range="week" aria-pressed="false">Last 7 days</button>
+        <button type="button" data-range="month" aria-pressed="false">Last 30 days</button>
+        <button type="button" data-range="year" aria-pressed="false">Last year</button>
+        <div class="custom-picker">
+          <button type="button" data-range="custom" aria-pressed="false" aria-expanded="false" aria-controls="advice-custom-range">Custom</button>
+          <div class="custom-range" id="advice-custom-range" role="dialog" aria-label="Custom dates" hidden>
+            <label>Start <input id="advice-range-start" type="date" /></label>
+            <label>End <input id="advice-range-end" type="date" /></label>
+          </div>
         </div>
       </div>
     </div>
-  </div>
-  <div id="findings" aria-live="polite"></div>
-  <p class="data-note">Ask advisor and Suggest settings both use these figures, not every stored reading.</p>
+    <div id="findings" aria-live="polite"></div>
+    <p class="data-note">Questions and the settings check use these figures.</p>
+  </section>
+  <section class="advisor-block">
+    <div class="advice-row">
+      <div class="advice-pane">
+        <h2>Ask the AI Advisor</h2>
+        <label>
+          What should the AI Advisor solve?
+          <textarea id="advice-note" maxlength="2000" rows="8" placeholder="A goal or a problem, for example a cold morning or too many compressor starts."></textarea>
+        </label>
+        <div class="advice-actions">
+          <button id="advice-button" type="button">Ask the AI Advisor</button>
+        </div>
+      </div>
+      <div class="advice-pane">
+        <h2>Answer</h2>
+        <div id="advice-body">
+          <p class="advice-status">Ask a question after a few samples have been stored.</p>
+        </div>
+        <p id="advice-meta" hidden></p>
+      </div>
+    </div>
+  </section>
+  <section class="advisor-block">
+    <div class="advice-row">
+      <div class="advice-pane">
+        <h2>Settings check</h2>
+        <p class="settings-copy">Propose changes to heating mode, hot water mode, hot water temperature, and the heating setpoint from the selected period.</p>
+        <div class="advice-actions">
+          <button id="suggest-button" type="button">Check settings</button>
+        </div>
+      </div>
+      <div class="advice-pane" id="setting-changes">
+        <h2>Suggested changes</h2>
+        <p id="changes-status">Check settings after a few samples have been stored.</p>
+        <div id="changes"></div>
+      </div>
+    </div>
+  </section>
 </section>
-<div class="advice-row">
-  {% call ui.card("section") %}
-  <h2>Ask advisor</h2>
-  <label>
-    What should the advisor solve?
-    <textarea id="advice-note" maxlength="2000" rows="8" placeholder="A goal or a problem, for example a cold morning or too many compressor starts."></textarea>
-  </label>
-  <div class="advice-actions">
-    <button id="advice-button" type="button">Ask advisor</button>
-  </div>
-  {% endcall %}
-  {% call ui.card("section") %}
-  <h2>Advisor Suggestions</h2>
-  <div id="advice-body">
-    <p class="advice-status">Ask for a suggestion after a few samples have been stored.</p>
-  </div>
-  <p id="advice-meta" hidden></p>
-  {% endcall %}
-</div>
-<div class="advice-row">
-  {% call ui.card("section") %}
-  <h2>Suggest settings</h2>
-  <p class="settings-copy">Propose changes to heating mode, hot water mode, hot water temperature, and the heating setpoint from the selected period.</p>
-  <div class="advice-actions">
-    <button id="suggest-button" type="button">Suggest settings</button>
-  </div>
-  {% endcall %}
-  {% call ui.card("section", id="setting-changes") %}
-  <h2>Setting changes</h2>
-  <p id="changes-status">Suggest settings after a few samples have been stored.</p>
-  <div id="changes"></div>
-  {% endcall %}
-</div>
 <section class="pump-info" aria-labelledby="pump-info-title">
   <h2 id="pump-info-title">Pump information</h2>
   <div id="pump-table"></div>
@@ -85,5 +91,5 @@
 
 {% block scripts %}
 <script src="/static/pump_table.js?v=4"></script>
-<script src="/static/optimization.js?v=7"></script>
+<script src="/static/optimization.js?v=8"></script>
 {% endblock %}

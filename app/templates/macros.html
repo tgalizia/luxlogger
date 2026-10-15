@@ -16,7 +16,7 @@
 {% macro toolbar(refresh_seconds, active="") %}
 {% set page_meta = {
   "dashboard": ("fa-solid fa-house", "Dashboard"),
-  "optimization": ("fa-solid fa-lightbulb", "AI Optimization"),
+  "optimization": ("fa-solid fa-lightbulb", "AI Advisor"),
   "settings": ("fa-solid fa-fan", "Pump settings"),
   "app": ("fa-solid fa-gear", "App settings"),
 } %}
@@ -33,7 +33,7 @@
         {% call toolbar_link("/", "dashboard", "Dashboard", active) %}
         <i class="fa-solid fa-house" aria-hidden="true"></i>
         {% endcall %}
-        {% call toolbar_link("/optimization", "optimization", "AI Optimization", active) %}
+        {% call toolbar_link("/optimization", "optimization", "AI Advisor", active) %}
         <i class="fa-solid fa-lightbulb" aria-hidden="true"></i>
         {% endcall %}
         {% call toolbar_link("/settings", "settings", "Pump settings", active) %}

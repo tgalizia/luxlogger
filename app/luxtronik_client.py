@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 
 from app.config import get_settings
 from app.database import add_sample, count_samples, session_scope, utcnow
+from app.runtime import record_luxtronik_reading
 from app.pump_info import build_sections
 from app.settings_catalog import (
     SETTINGS,
@@ -57,6 +58,7 @@ class Snapshot:
     heat_heating_kwh: float | None = None
     heat_dhw_kwh: float | None = None
     heat_pool_kwh: float | None = None
+    room_temp: float | None = None
 
 
 class QueriesPaused(Exception):
@@ -151,6 +153,7 @@ def poll_once() -> None:
         return
     with session_scope() as session:
         add_sample(session, snapshot)
+        record_luxtronik_reading(session, snapshot.room_temp)
     poll_state.mark_ok(recorded_at)
     logger.info(
         "Stored sample mode=%s compressor=%s flow=%s",
@@ -227,6 +230,7 @@ def read_live_snapshot(host: str, port: int, recorded_at: datetime) -> Snapshot:
         heat_heating_kwh=_number(calculations, "ID_WEB_WMZ_Heizung"),
         heat_dhw_kwh=_number(calculations, "ID_WEB_WMZ_Brauchwasser"),
         heat_pool_kwh=_number(calculations, "ID_WEB_WMZ_Schwimmbad"),
+        room_temp=_number(calculations, "ID_WEB_RBE_RT_Ist"),
     )
 
 
@@ -286,6 +290,7 @@ def demo_snapshot(recorded_at: datetime) -> Snapshot:
         heat_heating_kwh=heat_heating_kwh,
         heat_dhw_kwh=heat_dhw_kwh,
         heat_pool_kwh=heat_pool_kwh,
+        room_temp=21.5,
     )
 
 

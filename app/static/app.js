@@ -48,6 +48,9 @@ const fields = {
 };
 
 const indoorForm = document.querySelector("#indoor-form");
+const indoorReading = document.querySelector("#indoor-reading");
+const indoorValue = document.querySelector("#indoor-value");
+const indoorNote = document.querySelector("#indoor-note");
 let heatingChart;
 let hotWaterChart;
 let devicesChart;
@@ -167,6 +170,27 @@ function renderStatus(payload) {
   text(fields.outdoor, formatNumber(latest && latest.outdoor_temp, 1, " °C"));
   renderSwitch(fields.compressor, latest ? Boolean(latest.compressor_running) : null);
   renderSwitch(fields.heater, latest ? extraHeaterOn(latest) : null);
+  renderIndoor(payload);
+}
+
+function renderIndoor(payload) {
+  const source = payload.indoor_source || "manual";
+  const sensor = source !== "manual";
+  indoorForm.hidden = sensor;
+  indoorReading.hidden = !sensor;
+  if (!sensor) return;
+  const indoor = payload.indoor;
+  text(indoorValue, formatNumber(indoor && indoor.temperature_c, 1, " °C"));
+  indoorNote.replaceChildren();
+  if (!indoor) {
+    indoorNote.append(document.createTextNode("No reading yet. Finish the setup in "));
+    const link = document.createElement("a");
+    link.href = "/app-settings";
+    link.textContent = "App settings";
+    indoorNote.append(link, document.createTextNode("."));
+    return;
+  }
+  text(indoorNote, source === "luxtronik" ? "From the Luxtronik room unit." : "From the Shelly sensor.");
 }
 
 function renderSwitch(node, on) {
@@ -595,8 +619,8 @@ function renderChart(samples, indoor, range, window) {
   );
   const delivered = withHidden(
     [
-      heatSeries("Heating", samples, "heat_heating_kwh", "#c2410c"),
-      heatSeries("Hot water", samples, "heat_dhw_kwh", "#e11d48"),
+      heatSeries("Heating", samples, "heat_heating_kwh", "#7c3aed"),
+      heatSeries("Hot water", samples, "heat_dhw_kwh", "#dc2626"),
       heatSeries("Pool", samples, "heat_pool_kwh", "#0d9488"),
     ],
     hiddenLabels(energyChart),

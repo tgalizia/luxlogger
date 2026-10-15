@@ -1,4 +1,5 @@
 const connectionForm = document.querySelector("#connection-form");
+const indoorSourceForm = document.querySelector("#indoor-source-form");
 const equipmentForm = document.querySelector("#equipment-form");
 const aiForm = document.querySelector("#ai-form");
 const priceForm = document.querySelector("#price-form");
@@ -17,6 +18,16 @@ const resetButton = document.querySelector("#reset-prompts");
 const priceInput = document.querySelector("#price");
 const currencyInput = document.querySelector("#currency");
 const connectionStatus = document.querySelector("#connection-status");
+const indoorSourceInput = document.querySelector("#indoor-source");
+const indoorRoomInput = document.querySelector("#indoor-room");
+const indoorRoomLabel = document.querySelector("#indoor-room-label");
+const indoorStatus = document.querySelector("#indoor-status");
+const shellyUrl = document.querySelector("#shelly-url");
+const indoorNotes = {
+  manual: document.querySelector("#indoor-manual-note"),
+  shelly: document.querySelector("#indoor-shelly-note"),
+  luxtronik: document.querySelector("#indoor-luxtronik-note"),
+};
 const equipmentStatus = document.querySelector("#equipment-status");
 const aiStatus = document.querySelector("#ai-status");
 const priceStatus = document.querySelector("#status");
@@ -112,6 +123,39 @@ priceInput.addEventListener("input", () => {
 
 providerInput.addEventListener("change", () => {
   fillModels(providerInput.value, modelInput.value);
+});
+
+function shellyWebhookUrl() {
+  return `${window.location.origin}/api/indoor/shelly?temperature_c=` + "${ev.tC}";
+}
+
+function showIndoorNotes(source) {
+  for (const [name, element] of Object.entries(indoorNotes)) {
+    element.hidden = name !== source;
+  }
+  indoorRoomLabel.hidden = source === "manual";
+  shellyUrl.textContent = shellyWebhookUrl();
+}
+
+indoorSourceInput.addEventListener("change", () => {
+  showIndoorNotes(indoorSourceInput.value);
+});
+
+indoorSourceForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const saved = await save(
+    indoorSourceForm,
+    {
+      indoor_source: indoorSourceInput.value,
+      indoor_room: indoorRoomInput.value,
+    },
+    indoorStatus,
+    "Indoor temperature saved.",
+  );
+  if (!saved) return;
+  indoorSourceInput.value = saved.indoor_source;
+  indoorRoomInput.value = saved.indoor_room;
+  showIndoorNotes(saved.indoor_source);
 });
 
 connectionForm.addEventListener("submit", async (event) => {
@@ -222,6 +266,7 @@ async function load() {
   if (!response.ok) {
     const message = await readError(response);
     show(connectionStatus, message, "error");
+    show(indoorStatus, message, "error");
     show(equipmentStatus, message, "error");
     show(aiStatus, message, "error");
     show(priceStatus, message, "error");
@@ -230,6 +275,9 @@ async function load() {
   const saved = await response.json();
   hostInput.value = saved.luxtronik_host || "";
   portInput.value = saved.luxtronik_port || "";
+  indoorSourceInput.value = saved.indoor_source || "manual";
+  indoorRoomInput.value = saved.indoor_room || "living room";
+  showIndoorNotes(indoorSourceInput.value);
   pumpMakerInput.value = saved.pump_maker || "";
   pumpModelInput.value = saved.pump_model || "";
   controllerModelInput.value = saved.controller_model || "";

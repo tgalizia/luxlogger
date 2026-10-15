@@ -149,7 +149,7 @@ function renderSuggestion(report, message) {
     fields.adviceMeta.hidden = false;
     return;
   }
-  showStatus(message || "Ask for a suggestion after a few samples have been stored.");
+  showStatus(message || "Ask a question after a few samples have been stored.");
 }
 
 function renderAdvice(report, message, paintFindings) {

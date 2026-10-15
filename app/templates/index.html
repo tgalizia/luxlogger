@@ -6,7 +6,7 @@
 {% block head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-<link rel="stylesheet" href="/static/dashboard.css?v=14" />
+<link rel="stylesheet" href="/static/dashboard.css?v=17" />
 {% endblock %}
 
 {% block body %}
@@ -54,6 +54,11 @@
     </div>
     <p id="form-message"></p>
   </form>
+  <div id="indoor-reading" hidden>
+    <div class="label">Indoor temperature</div>
+    <div class="value" id="indoor-value">—</div>
+    <p id="indoor-note"></p>
+  </div>
   {% endcall %}
   {% call ui.card() %}
   <div class="device-row">
@@ -82,21 +87,24 @@
 {% endcall %}
 {% call ui.card("section") %}
 <div class="range-controls">
-  <div class="ranges" role="group" aria-label="Period">
-    <button type="button" data-period="current" class="active" aria-pressed="true">Current</button>
-    <button type="button" data-period="past" aria-pressed="false">Past</button>
-  </div>
-  <div class="ranges" role="group" aria-label="Data range">
-    <button type="button" data-range="hour" aria-pressed="false">Last hour</button>
-    <button type="button" data-range="day" class="active" aria-pressed="true">Last 24 hours</button>
-    <button type="button" data-range="week" aria-pressed="false">This week</button>
-    <button type="button" data-range="month" aria-pressed="false">This month</button>
-    <button type="button" data-range="year" aria-pressed="false">This year</button>
-    <div class="custom-picker">
-      <button type="button" data-range="custom" aria-pressed="false" aria-expanded="false" aria-controls="custom-range">Custom</button>
-      <div class="custom-range" id="custom-range" role="dialog" aria-label="Custom dates" hidden>
-        <label>Start <input id="range-start" type="date" /></label>
-        <label>End <input id="range-end" type="date" /></label>
+  <h2 class="range-title">Period Selection</h2>
+  <div class="range-buttons">
+    <div class="ranges" role="group" aria-label="Period">
+      <button type="button" data-period="current" class="active" aria-pressed="true">Current</button>
+      <button type="button" data-period="past" aria-pressed="false">Past</button>
+    </div>
+    <div class="ranges" role="group" aria-label="Data range">
+      <button type="button" data-range="hour" aria-pressed="false">Last hour</button>
+      <button type="button" data-range="day" class="active" aria-pressed="true">Last 24 hours</button>
+      <button type="button" data-range="week" aria-pressed="false">This week</button>
+      <button type="button" data-range="month" aria-pressed="false">This month</button>
+      <button type="button" data-range="year" aria-pressed="false">This year</button>
+      <div class="custom-picker">
+        <button type="button" data-range="custom" aria-pressed="false" aria-expanded="false" aria-controls="custom-range">Custom</button>
+        <div class="custom-range" id="custom-range" role="dialog" aria-label="Custom dates" hidden>
+          <label>Start <input id="range-start" type="date" /></label>
+          <label>End <input id="range-end" type="date" /></label>
+        </div>
       </div>
     </div>
   </div>
@@ -126,5 +134,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/app.js?v=39"></script>
+<script src="/static/app.js?v=40"></script>
 {% endblock %}

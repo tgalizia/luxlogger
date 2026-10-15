@@ -12,15 +12,15 @@
 .metrics {
   display: grid;
   grid-template-columns: minmax(0, 2.1fr) minmax(148px, 0.85fr) minmax(168px, 0.95fr) minmax(176px, 0.9fr);
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 16px;
+  margin-bottom: 16px;
   align-items: stretch;
 }
 .quad {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px 12px;
-  margin-top: 8px;
+  gap: 10px 16px;
+  margin-top: 12px;
 }
 .sublabel { color: var(--muted); font-size: 0.78rem; }
 .quad .value { font-size: 1.35rem; }
@@ -30,15 +30,15 @@
   align-items: center;
   gap: 12px;
 }
-.device-row + .device-row { margin-top: 12px; }
+.device-row + .device-row { margin-top: 16px; }
 .state.badge { padding: 5px 11px; }
 .state.on { --lit: #dc2626; --ink-on: #dc2626; --fill: #fee2e2; }
 .state.off { --lit: #78716c; --ink-on: #78716c; --fill: #f5f5f4; }
 .mode-card {
   display: flex;
   align-items: center;
-  gap: 12px 18px;
-  margin-bottom: 16px;
+  gap: 16px 20px;
+  margin-bottom: 20px;
 }
 .badges {
   display: flex;
@@ -81,14 +81,23 @@
 .badge[data-tone="warmup"] { --dot: #fef9c3; --lit: #ca8a04; --fill: #fef9c3; --ink-on: #854d0e; --glow: #facc15; }
 .badge[data-tone="link"] { --dot: #e2e8f0; --lit: #475569; --fill: #e2e8f0; --ink-on: #334155; --glow: #94a3b8; }
 .label { color: var(--muted); font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase; }
-.value { font-size: 1.45rem; margin-top: 6px; }
+.value { font-size: 1.45rem; margin-top: 8px; }
 .range-controls {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  gap: 10px 16px;
-  margin-bottom: 16px;
+  gap: 12px 16px;
+  margin-bottom: 32px;
+}
+.range-title { margin: 0; }
+.range-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
 }
 .custom-picker { position: relative; }
 .custom-range {
@@ -131,17 +140,20 @@
   color: white;
   border-color: var(--accent);
 }
-#chart-wrap { height: 320px; margin-top: 8px; }
-#dhw-wrap { height: 260px; margin-top: 4px; }
-#devices-wrap { height: 220px; margin-top: 4px; }
-#energy-wrap { height: 260px; margin-top: 4px; }
-h2.subhead { margin-top: 18px; }
+#chart-wrap { height: 320px; margin-top: 12px; }
+#dhw-wrap { height: 260px; margin-top: 8px; }
+#devices-wrap { height: 220px; margin-top: 8px; }
+#energy-wrap { height: 260px; margin-top: 8px; }
+h2.subhead { margin-top: 24px; }
 #indoor-form {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
+  gap: 12px;
 }
+#indoor-form[hidden],
+#indoor-reading[hidden] { display: none; }
+#indoor-note { margin: 8px 0 0; font-size: 0.82rem; }
 .indoor-row {
   display: flex;
   align-items: center;
@@ -174,18 +186,18 @@ button:disabled { opacity: 0.6; cursor: wait; }
 .summary-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-top: 16px;
+  gap: 16px;
+  margin-top: 20px;
 }
 .summary-grid > .card { margin-top: 0; }
-#energy h2, #heat-meter h2 { margin-bottom: 6px; }
+#energy h2, #heat-meter h2 { margin-bottom: 10px; }
 #energy-note, #meter-note { margin-bottom: 12px; }
 .energy-row {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   font-size: 0.92rem;
-  padding: 4px 0;
+  padding: 6px 0;
 }
 .energy-row.total {
   font-weight: 600;

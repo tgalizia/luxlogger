@@ -16,7 +16,6 @@ from sqlalchemy.orm import Session
 from app.ai_advisor import AdvisorError, advise, clean_note, limit_findings, suggest_settings
 from app.config import PROJECT_ROOT, get_settings
 from app.database import (
-    add_indoor,
     add_report,
     get_app_preference,
     get_db,
@@ -50,7 +49,16 @@ from app.luxtronik_client import (
     write_setting,
 )
 from app.pump_info import sections_from_sample
-from app.runtime import PreferenceError, app_settings_payload, controller_endpoint, effective_runtime, save_app_settings
+from app.runtime import (
+    IndoorSourceError,
+    PreferenceError,
+    app_settings_payload,
+    controller_endpoint,
+    effective_runtime,
+    record_manual_reading,
+    record_shelly_reading,
+    save_app_settings,
+)
 from app.settings_catalog import SettingsError, validate_value
 
 logger = logging.getLogger("luxtronik_advisor")
@@ -114,6 +122,8 @@ class AppSettingsIn(BaseModel):
     ai_model: str | None = None
     advice_prompt: str | None = None
     settings_prompt: str | None = None
+    indoor_source: str | None = None
+    indoor_room: str | None = None
 
 
 class NoteIn(BaseModel):
@@ -194,7 +204,8 @@ def app_settings_page(request: Request):
 @app.get("/api/status")
 def status(session: Session = Depends(get_db)):
     settings = get_settings()
-    host, port = controller_endpoint(session)
+    runtime = effective_runtime(session)
+    host, port = runtime.host, runtime.port
     health = poll_state.snapshot()
     latest = latest_sample(session)
     indoor = latest_indoor(session)
@@ -218,6 +229,7 @@ def status(session: Session = Depends(get_db)):
         "last_success_at": isoformat_utc(health["last_success_at"]),
         "latest": latest_payload,
         "indoor": None if indoor is None else indoor_to_dict(indoor),
+        "indoor_source": runtime.indoor_source,
     }
 
 
@@ -325,10 +337,25 @@ def list_indoor(
     return {"readings": [indoor_to_dict(row) for row in rows]}
 
 
+@app.get("/api/indoor/shelly")
+def shelly_indoor(temperature_c: float = Query(), session: Session = Depends(get_db)):
+    """Store a Shelly H&T webhook. The sensor calls this URL with the measured temperature."""
+    try:
+        row = record_shelly_reading(session, temperature_c)
+    except IndoorSourceError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except PreferenceError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    session.flush()
+    return indoor_to_dict(row)
+
+
 @app.post("/api/indoor")
 def create_indoor(body: IndoorIn, session: Session = Depends(get_db)):
-    room = body.room.strip() or "living room"
-    row = add_indoor(session, room, body.temperature_c)
+    try:
+        row = record_manual_reading(session, body.temperature_c, body.room)
+    except IndoorSourceError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     session.flush()
     return indoor_to_dict(row)
 

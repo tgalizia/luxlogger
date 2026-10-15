@@ -13,13 +13,28 @@ from app.ai_advisor import (
     validate_provider,
 )
 from app.config import Settings, get_settings
-from app.database import apply_app_preference, get_app_preference, preference_to_dict, session_scope
+from app.database import (
+    add_indoor,
+    apply_app_preference,
+    get_app_preference,
+    preference_to_dict,
+    session_scope,
+)
 
 IDENTITY_LIMIT = 120
 
 
 class PreferenceError(Exception):
     """An app setting cannot be stored."""
+
+
+class IndoorSourceError(PreferenceError):
+    """A room reading arrived for a source that is not selected."""
+
+
+INDOOR_SOURCES = ("manual", "shelly", "luxtronik")
+INDOOR_MIN_C = -10
+INDOOR_MAX_C = 45
 
 
 @dataclass(frozen=True)
@@ -35,6 +50,8 @@ class Runtime:
     pump_model: str
     controller_model: str
     controller_software: str
+    indoor_source: str
+    indoor_room: str
 
     def identity(self) -> dict:
         return {
@@ -76,6 +93,8 @@ def app_settings_payload(session) -> dict:
         "ai_model": runtime.model,
         "advice_prompt": runtime.advice_prompt,
         "settings_prompt": runtime.settings_prompt,
+        "indoor_source": runtime.indoor_source,
+        "indoor_room": runtime.indoor_room,
         "advice_prompt_default": SYSTEM_PROMPT,
         "settings_prompt_default": SETTINGS_PROMPT,
         "model_choices": {provider: list(models) for provider, models in MODEL_CHOICES.items()},
@@ -109,9 +128,69 @@ def save_app_settings(session, sent: set[str], body) -> dict:
         updates["ai_model"] = validate_model(provider, body.ai_model)
         updates["advice_prompt"] = validate_prompt(body.advice_prompt, "advice prompt")
         updates["settings_prompt"] = validate_prompt(body.settings_prompt, "settings prompt")
+    if "indoor_source" in sent or "indoor_room" in sent:
+        if "indoor_source" not in sent:
+            raise PreferenceError("Choose a room temperature source.")
+        updates["indoor_source"] = validate_indoor_source(body.indoor_source)
+        updates["indoor_room"] = validate_indoor_room(body.indoor_room)
     if updates:
         apply_app_preference(session, **updates)
     return app_settings_payload(session)
+
+
+def validate_indoor_source(value: str | None) -> str:
+    text = (value or "").strip()
+    if text not in INDOOR_SOURCES:
+        raise PreferenceError("Choose a room temperature source.")
+    return text
+
+
+def validate_indoor_room(value: str | None) -> str:
+    text = (value or "").strip() or "living room"
+    if len(text) > 80:
+        raise PreferenceError("Room name must be at most 80 characters.")
+    return text
+
+
+def parse_indoor_temperature(value) -> float:
+    if isinstance(value, bool) or value is None:
+        raise PreferenceError("Enter a temperature from -10 to 45 °C.")
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise PreferenceError("Enter a temperature from -10 to 45 °C.") from exc
+    if number < INDOOR_MIN_C or number > INDOOR_MAX_C:
+        raise PreferenceError("Enter a temperature from -10 to 45 °C.")
+    return number
+
+
+def record_manual_reading(session, temperature_c: float, room: str):
+    """Store a typed temperature. Only while Enter by hand is selected."""
+    runtime = effective_runtime(session)
+    if runtime.indoor_source != "manual":
+        raise IndoorSourceError("Type a temperature only when Enter by hand is selected.")
+    name = (room or "").strip() or "living room"
+    return add_indoor(session, name, parse_indoor_temperature(temperature_c))
+
+
+def record_shelly_reading(session, temperature_c):
+    """Store a Shelly webhook temperature, using the saved room name."""
+    runtime = effective_runtime(session)
+    if runtime.indoor_source != "shelly":
+        raise IndoorSourceError("The Shelly sensor is not the selected room temperature source.")
+    return add_indoor(session, runtime.indoor_room, parse_indoor_temperature(temperature_c))
+
+
+def record_luxtronik_reading(session, temperature_c):
+    """Store a controller room temperature when that source is selected and in range."""
+    runtime = effective_runtime(session)
+    if runtime.indoor_source != "luxtronik":
+        return None
+    try:
+        value = parse_indoor_temperature(temperature_c)
+    except PreferenceError:
+        return None
+    return add_indoor(session, runtime.indoor_room, value)
 
 
 def validate_host(value: str | None) -> str:
@@ -179,4 +258,13 @@ def _from_row(row, settings: Settings) -> Runtime:
         pump_model=_stored(row, "pump_model") or "",
         controller_model=_stored(row, "controller_model") or "",
         controller_software=_stored(row, "controller_software") or "",
+        indoor_source=_indoor_source(row),
+        indoor_room=_stored(row, "indoor_room") or "living room",
     )
+
+
+def _indoor_source(row) -> str:
+    try:
+        return validate_indoor_source(_stored(row, "indoor_source") or "manual")
+    except PreferenceError:
+        return "manual"

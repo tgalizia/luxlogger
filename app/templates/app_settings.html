@@ -4,12 +4,12 @@
 {% block title %}App settings{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="/static/app_settings.css?v=6" />
+<link rel="stylesheet" href="/static/app_settings.css?v=7" />
 {% endblock %}
 
 {% block body %}
 <header>
-  {{ ui.header_copy("App settings", "The heat pump address, the equipment the advisor should know, and the price used to cost heat.") }}
+  {{ ui.header_copy("App settings", "The heat pump address, the indoor temperature source, the equipment the advisor should know, and the price used to cost heat.") }}
 </header>
 <div class="settings-columns">
 <div class="settings-column">
@@ -33,6 +33,42 @@
 </label>
 <button type="submit">Save</button>
 <p id="connection-status" class="form-status" hidden></p>
+{% endcall %}
+{% call ui.card("form", id="indoor-source-form") %}
+<h2>Indoor temperature</h2>
+<label>
+  Source
+  <select id="indoor-source" name="indoor_source">
+    <option value="manual">Enter by hand</option>
+    <option value="shelly">Shelly H&amp;T</option>
+    <option value="luxtronik">Luxtronik room unit</option>
+  </select>
+</label>
+<label id="indoor-room-label" hidden>
+  Room
+  <input id="indoor-room" name="indoor_room" maxlength="80" autocomplete="off" />
+</label>
+<div id="indoor-manual-note" class="sensor-note">
+  <p>Type the temperature on the dashboard.</p>
+</div>
+<div id="indoor-shelly-note" class="sensor-note" hidden>
+  <ol>
+    <li>Join the Shelly H&amp;T to the same Wi-Fi as this logger.</li>
+    <li>On the sensor’s web page, add an action for temperature change, with the condition Any.</li>
+    <li>Paste this URL into the action. Leave <code>${ev.tC}</code> as written, then save the action and save this page.</li>
+  </ol>
+  <code id="shelly-url" class="sensor-url"></code>
+  <p>Open this page from the logger’s address on your network before copying the URL. On batteries the sensor reports after about a 0.5 °C change, or at least every two hours. On USB-C power it reports about every five minutes. Leave it in Celsius, and use firmware 2.0.1 or newer so the temperature is filled in.</p>
+</div>
+<div id="indoor-luxtronik-note" class="sensor-note" hidden>
+  <ol>
+    <li>Leave the room unit connected to the heat pump controller. It does not connect to this logger.</li>
+    <li>Choose Luxtronik room unit, set the room name, and save.</li>
+  </ol>
+  <p>The next read stores the room temperature the controller reports. If the dashboard stays empty, the controller is not reporting a room reading.</p>
+</div>
+<button type="submit">Save</button>
+<p id="indoor-status" class="form-status" hidden></p>
 {% endcall %}
 {% call ui.card("form", id="equipment-form") %}
 <h2>Equipment</h2>
@@ -106,5 +142,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/app_settings.js?v=5"></script>
+<script src="/static/app_settings.js?v=6"></script>
 {% endblock %}
