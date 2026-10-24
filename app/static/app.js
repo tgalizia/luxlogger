@@ -146,6 +146,7 @@ let pollingGeneration = 0;
 function renderStatus(payload) {
   const latest = payload.latest;
   const polling = payload.polling !== false;
+  fields.connectionDetail.classList.toggle("is-off", !polling);
   if (!polling) {
     const when = payload.last_success_at
       ? `Last read ${formatWhen(payload.last_success_at)}.`

@@ -5,13 +5,13 @@ Telemetry reads never call write(). A setting changes only through write_setting
 
 import logging
 import math
-import socket
 import struct
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from app.config import get_settings
+from app.safe_luxtronik import SafeLuxtronik, controller_lock
 from app.database import add_sample, count_samples, session_scope, utcnow
 from app.runtime import record_luxtronik_reading
 from app.pump_info import build_sections
@@ -29,7 +29,6 @@ logger = logging.getLogger("luxtronik_advisor")
 COMPRESSOR_MODES = {"heating", "hot water", "swimming pool/solar", "defrost", "cooling"}
 HEATER_STAGE = "additional heat generator allowed to run"
 COMPRESSOR_STAGE = "one compressor allowed to run"
-SOCKET_TIMEOUT_SECONDS = 8
 LONG_ON_SECONDS = 25 * 60
 SHORT_ON_SECONDS = 4 * 60
 
@@ -165,16 +164,7 @@ def poll_once() -> None:
 
 def read_controller_identity(host: str, port: int) -> dict:
     """Read the pump series code and controller software. Does not write."""
-    ensure_polling()
-    from luxtronik import Luxtronik
-
-    previous_timeout = socket.getdefaulttimeout()
-    socket.setdefaulttimeout(SOCKET_TIMEOUT_SECONDS)
-    try:
-        pump = Luxtronik(host, port)
-        calculations = pump.calculations
-    finally:
-        socket.setdefaulttimeout(previous_timeout)
+    calculations = _read_calculations(host, port)
     return {
         "pump_model": _text(calculations, "ID_WEB_Code_WP_akt"),
         "controller_software": _text(calculations, "ID_WEB_SoftStand"),
@@ -182,18 +172,8 @@ def read_controller_identity(host: str, port: int) -> dict:
 
 
 def read_live_snapshot(host: str, port: int, recorded_at: datetime) -> Snapshot:
-    """Open the config socket, read calculations, and close. Does not write."""
-    ensure_polling()
-    from luxtronik import Luxtronik
-
-    previous_timeout = socket.getdefaulttimeout()
-    socket.setdefaulttimeout(SOCKET_TIMEOUT_SECONDS)
-    try:
-        pump = Luxtronik(host, port)
-    finally:
-        socket.setdefaulttimeout(previous_timeout)
-
-    calculations = pump.calculations
+    """Read calculations only, then close. Does not write."""
+    calculations = _read_calculations(host, port)
     status_line = _text(calculations, "ID_WEB_HauptMenuStatus_Zeile1")
     operating_mode = _text(calculations, "ID_WEB_WP_BZ_akt")
     frequency = _number(calculations, "ID_WEB_Freq_VD")
@@ -243,9 +223,19 @@ def derive_heater_running(*outputs: bool | None, runtime: float | None) -> bool:
 
 
 def derive_compressor_running(status_line, compressor_output, frequency, runtime, operating_mode) -> bool:
+    """The compressor relay decides, once the controller has sent it.
+
+    ID_WEB_Time_WPein_akt counts the whole heat-pump session, including pump
+    pre-run, so a positive runtime must not mean the compressor is on.
+    Status and frequency are used only when the relay value is missing.
+    """
+    if compressor_output is True:
+        return True
+    if compressor_output is False:
+        return False
     if status_line == "heatpump idle":
         return False
-    if status_line == "heatpump running" or compressor_output is True:
+    if status_line == "heatpump running":
         return True
     if frequency is not None and frequency > 0:
         return True
@@ -411,7 +401,7 @@ class SettingsWriteError(Exception):
 
 def read_settings(host: str, port: int) -> list[dict]:
     """Read the four household settings. Does not write."""
-    return _with_pump(host, port, _read_allowed)
+    return _with_pump(host, port, _read_allowed, parameters_only=True)
 
 
 def read_pump_info(host: str, port: int) -> dict:
@@ -421,7 +411,12 @@ def read_pump_info(host: str, port: int) -> dict:
 
 def write_setting(host: str, port: int, setting_id: str, value) -> dict:
     """Validate one allowlisted parameter, write it, and read it back."""
-    return _with_pump(host, port, lambda pump: commit_setting(pump, setting_id, value))
+    return _with_pump(
+        host,
+        port,
+        lambda pump: commit_setting(pump, setting_id, value),
+        parameters_only=True,
+    )
 
 
 def commit_setting(pump, setting_id: str, value) -> dict:
@@ -443,7 +438,8 @@ def commit_setting(pump, setting_id: str, value) -> dict:
         pump.parameters.queue.clear()
         raise SettingsWriteError(f"The controller did not accept {spec.label}.")
     pump.write()
-    pump.read()
+    refresh = getattr(pump, "read_parameters_only", pump.read)
+    refresh()
     confirmed = _read_parameter(pump, spec.id)
     if not values_match(spec.id, confirmed, normalized):
         raise SettingsWriteError(
@@ -457,17 +453,30 @@ def commit_setting(pump, setting_id: str, value) -> dict:
     }
 
 
-def _with_pump(host: str, port: int, action):
+def _read_calculations(host: str, port: int):
+    """Command 3004 only. The socket is closed before this returns."""
     ensure_polling()
-    from luxtronik import Luxtronik
+    with controller_lock:
+        pump = SafeLuxtronik(host, port)
+        try:
+            pump.read_calculations_only()
+            return pump.calculations
+        finally:
+            pump.disconnect()
 
-    previous_timeout = socket.getdefaulttimeout()
-    socket.setdefaulttimeout(SOCKET_TIMEOUT_SECONDS)
-    try:
-        pump = Luxtronik(host, port, safe=True)
-        return action(pump)
-    finally:
-        socket.setdefaulttimeout(previous_timeout)
+
+def _with_pump(host: str, port: int, action, *, parameters_only: bool = False):
+    ensure_polling()
+    with controller_lock:
+        pump = SafeLuxtronik(host, port, safe=True)
+        try:
+            if parameters_only:
+                pump.read_parameters_only()
+            else:
+                pump.read()
+            return action(pump)
+        finally:
+            pump.disconnect()
 
 
 def _read_allowed(pump) -> list[dict]:
