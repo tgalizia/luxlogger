@@ -1,6 +1,7 @@
 """The controller socket closes after every read, including a timeout."""
 
 import socket
+import struct
 import threading
 from datetime import datetime, timezone
 
@@ -75,14 +76,17 @@ def test_full_read_closes_when_the_last_block_fails():
 
 
 def test_connect_failure_shuts_the_socket_down(monkeypatch):
-    seen = {}
+    seen = {"timeouts": []}
 
     class Sock:
         def settimeout(self, value):
-            seen["timeout"] = value
+            seen["timeouts"].append(value)
 
         def connect(self, _addr):
             raise ConnectionRefusedError("refused")
+
+        def recv(self, _count):
+            raise OSError("not connected")
 
         def shutdown(self, how):
             seen["shutdown"] = how
@@ -94,9 +98,120 @@ def test_connect_failure_shuts_the_socket_down(monkeypatch):
     pump = SafeLuxtronik("127.0.0.1", 9)
     with pytest.raises(ConnectionRefusedError):
         pump.read_calculations_only()
-    assert seen["timeout"] == SOCKET_TIMEOUT_SECONDS == 4.0
-    assert seen["shutdown"] == socket.SHUT_RDWR
+    assert seen["timeouts"][0] == SOCKET_TIMEOUT_SECONDS == 4.0
+    assert seen["shutdown"] == socket.SHUT_WR
     assert seen["closed"] is True
+    assert pump._socket is None
+    assert pump._raw is None
+
+
+class _Fragments:
+    """One byte per recv, which is the read the library used to drop."""
+
+    def __init__(self, payload: bytes):
+        self.payload = payload
+        self.offset = 0
+        self.sent = b""
+        self.shutdowns = []
+        self.closed = False
+
+    def settimeout(self, _value):
+        return None
+
+    def connect(self, _addr):
+        return None
+
+    def sendall(self, data):
+        self.sent += data
+
+    def recv(self, count):
+        if self.offset >= len(self.payload):
+            raise BlockingIOError
+        end = self.offset + 1
+        chunk = self.payload[self.offset : min(end, self.offset + count)]
+        self.offset += len(chunk)
+        return chunk
+
+    def shutdown(self, how):
+        self.shutdowns.append(how)
+
+    def close(self):
+        self.closed = True
+
+
+def test_a_fragmented_calculation_is_read_whole_and_finished(monkeypatch):
+    payload = struct.pack(">iii", 3004, 0, 2) + struct.pack(">ii", 15, 25)
+    raw = _Fragments(payload)
+    monkeypatch.setattr("app.safe_luxtronik.socket.socket", lambda *_args, **_kwargs: raw)
+    pump = SafeLuxtronik("127.0.0.1", 9)
+    pump.read_calculations_only()
+    assert raw.sent == struct.pack(">ii", 3004, 0)
+    assert raw.offset == len(payload)
+    assert raw.shutdowns == [socket.SHUT_WR]
+    assert raw.closed is True
+    assert pump._socket is None
+    assert pump.calculations.get(0).value == 15
+    assert pump.calculations.get(1).value == 25
+
+
+def test_a_failed_read_drains_the_unread_tail_before_fin(monkeypatch):
+    class Stall:
+        def __init__(self):
+            self.pending = struct.pack(">i", 3004) + b"TAIL"
+            self.timeout = None
+            self.failed = False
+            self.shutdowns = []
+            self.closed = False
+
+        def settimeout(self, value):
+            self.timeout = value
+
+        def connect(self, _addr):
+            return None
+
+        def sendall(self, _data):
+            return None
+
+        def recv(self, count):
+            if not self.failed:
+                self.failed = True
+                raise socket.timeout("timed out")
+            if not self.pending:
+                if self.timeout == 0:
+                    raise BlockingIOError
+                raise socket.timeout("idle")
+            chunk = self.pending[:count]
+            self.pending = self.pending[count:]
+            return chunk
+
+        def shutdown(self, how):
+            self.shutdowns.append(how)
+
+        def close(self):
+            self.closed = True
+
+    raw = Stall()
+    monkeypatch.setattr("app.safe_luxtronik.socket.socket", lambda *_args, **_kwargs: raw)
+    pump = SafeLuxtronik("127.0.0.1", 9)
+    with pytest.raises(socket.timeout):
+        pump.read_calculations_only()
+    assert raw.pending == b""
+    assert raw.shutdowns == [socket.SHUT_WR]
+    assert raw.closed is True
+    assert pump._socket is None
+
+
+def test_a_split_write_ack_is_read_whole_and_the_socket_closes(monkeypatch):
+    raw = _Fragments(struct.pack(">ii", 3002, 3))
+    monkeypatch.setattr("app.safe_luxtronik.socket.socket", lambda *_args, **_kwargs: raw)
+    pump = SafeLuxtronik("127.0.0.1", 9)
+    pump.parameters.queue[3] = 9
+    pump.write()
+    assert raw.sent == struct.pack(">iii", 3002, 3, 9)
+    assert raw.offset == len(raw.payload)
+    assert raw.shutdowns == [socket.SHUT_WR]
+    assert raw.closed is True
+    assert pump.parameters.queue == {}
     assert pump._socket is None
 
 
