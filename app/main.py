@@ -283,6 +283,27 @@ def telemetry(
     return {"since": isoformat_utc(start), "samples": [sample_to_dict(row) for row in rows]}
 
 
+def period_data(session, since: datetime | None = None, until: datetime | None = None) -> dict:
+    """Pump samples and indoor readings for one window. An empty window is still a file."""
+    start = _range_start(since, 24)
+    end = _exclusive_end(start, until)
+    return {
+        "since": isoformat_utc(start),
+        "until": isoformat_utc(end),
+        "samples": [sample_to_dict(row) for row in samples_since(session, start, end)],
+        "indoor": [indoor_to_dict(row) for row in indoor_since(session, start, end)],
+    }
+
+
+@app.get("/api/period-data")
+def period_data_view(
+    since: datetime | None = Query(default=None),
+    until: datetime | None = Query(default=None),
+    session: Session = Depends(get_db),
+):
+    return period_data(session, since, until)
+
+
 @app.get("/api/energy")
 def energy(
     since: datetime | None = Query(default=None),

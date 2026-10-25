@@ -5,7 +5,7 @@
 
 {% block head %}
 <link rel="stylesheet" href="/static/pump_table.css?v=7" />
-<link rel="stylesheet" href="/static/optimization.css?v=14" />
+<link rel="stylesheet" href="/static/optimization.css?v=15" />
 {% endblock %}
 
 {% block body %}
@@ -15,8 +15,14 @@
 <section class="card advisor">
   <section class="advisor-block" aria-labelledby="data-title">
     <div class="data-head">
-      <h2 id="data-title">Data for the AI Advisor</h2>
-      <p id="data-window">Last 24 hours</p>
+      <div>
+        <h2 id="data-title">Data for the AI Advisor</h2>
+        <p id="data-window">Last 24 hours</p>
+      </div>
+      <button id="download-data" class="secondary" type="button">
+        <i class="fa-solid fa-download" aria-hidden="true"></i>
+        Download JSON
+      </button>
     </div>
     <div class="range-controls">
       <div class="ranges" role="group" aria-label="Analysis period">
@@ -91,5 +97,5 @@
 
 {% block scripts %}
 <script src="/static/pump_table.js?v=4"></script>
-<script src="/static/optimization.js?v=8"></script>
+<script src="/static/optimization.js?v=9"></script>
 {% endblock %}

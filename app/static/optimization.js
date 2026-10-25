@@ -327,6 +327,50 @@ document.querySelectorAll("#advice-range-start, #advice-range-end").forEach((inp
   input.max = dateInputValue(new Date());
 });
 
+function fileStamp(date) {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}_${hours}${minutes}`;
+}
+
+function downloadName(span) {
+  return `luxlogger-${fileStamp(span.start)}_${fileStamp(span.end)}.json`;
+}
+
+const downloadButton = document.querySelector("#download-data");
+
+downloadButton.addEventListener("click", async () => {
+  const span = selectedWindow();
+  const query = analysisQuery();
+  if (!query || !span) {
+    fields.dataWindow.textContent = "Choose a start date and an end date after it.";
+    return;
+  }
+  downloadButton.disabled = true;
+  try {
+    const response = await fetch(`/api/period-data?${query}`);
+    if (!response.ok) {
+      const error = await readError(response);
+      fields.dataWindow.textContent = `${selectionLabel()} · ${error.message}`;
+      return;
+    }
+    const payload = await response.json();
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = downloadName(span);
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  } finally {
+    downloadButton.disabled = false;
+  }
+});
+
 adviceButton.addEventListener("click", async () => {
   const query = analysisQuery();
   if (!query) {

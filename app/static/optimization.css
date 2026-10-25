@@ -16,8 +16,23 @@ button:disabled { opacity: 0.6; cursor: wait; }
   padding-top: 28px;
   border-top: 1px solid var(--line);
 }
-.data-head { margin-bottom: 16px; }
+.data-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  margin-bottom: 16px;
+}
+.data-head > div { min-width: min(100%, 16rem); }
 .data-head h2 { margin-bottom: 4px; }
+.data-head button {
+  margin-top: 0;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 #data-window { font-size: 0.95rem; }
 .data-note { margin-top: 12px; font-size: 0.85rem; }
 #findings {
